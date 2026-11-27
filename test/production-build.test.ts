@@ -1,7 +1,15 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { unstable_startWorker } from "wrangler";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -13,6 +21,19 @@ const completeConfig = {
   ACCESS_ISSUER: "https://example-team.cloudflareaccess.com",
   ACCESS_AUDIENCE: "a".repeat(64),
 };
+
+const notCopied = new Set([".git", ".work", ".wrangler", ".dev.vars", "dist", "node_modules"]);
+
+function checkoutCopy(): string {
+  const checkout = process.cwd();
+  const root = mkdtempSync(join(tmpdir(), "os-production-build-"));
+  cpSync(checkout, root, {
+    recursive: true,
+    filter: (source) => !notCopied.has(relative(checkout, source).split("/")[0] ?? ""),
+  });
+  symlinkSync(join(checkout, "node_modules"), join(root, "node_modules"), "dir");
+  return root;
+}
 
 function buildEnvironment(nodeEnv: string | undefined): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: nodeEnv };
@@ -56,16 +77,16 @@ describe.each([
   { label: "test", nodeEnv: "test" },
 ])("vp build with NODE_ENV $label", ({ nodeEnv }) => {
   it("ships a Worker without the synthetic owner", { timeout: 120_000 }, async () => {
-    const outDir = mkdtempSync(join(tmpdir(), "os-production-build-"));
+    const root = checkoutCopy();
     try {
-      const build = spawnSync("vp", ["build", "--outDir", outDir], {
-        cwd: process.cwd(),
+      const build = spawnSync("vp", ["build"], {
+        cwd: root,
         env: buildEnvironment(nodeEnv),
         encoding: "utf8",
       });
       expect(build.status, build.stdout + build.stderr).toBe(0);
 
-      const workerDir = join(outDir, "os_core");
+      const workerDir = join(root, "dist", "os_core");
       expect(
         modulesInWorker(workerDir).filter((module) => module.endsWith(syntheticOwnerModule)),
       ).toEqual([]);
@@ -79,7 +100,7 @@ describe.each([
         body: { error: "setup_incomplete", missing: ["ACCESS_ISSUER", "ACCESS_AUDIENCE"] },
       });
     } finally {
-      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
