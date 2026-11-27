@@ -1,7 +1,9 @@
 import { Data, Option, Result, Schema } from "effect";
 
 export const OwnerEmail = Schema.String.check(
-  Schema.isPattern(/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/u),
+  Schema.isPattern(
+    /^[^\s@]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/u,
+  ),
 ).pipe(Schema.brand("OwnerEmail"));
 export type OwnerEmail = typeof OwnerEmail.Type;
 
