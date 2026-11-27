@@ -71,4 +71,4 @@ Until the reset, OS refuses everyone with `owner_locked`. Restoring the old `OWN
 
 ## Run locally
 
-Put `OWNER_EMAIL=owner@example.com` in `.dev.vars` and run `vp run dev`. Locally, OS signs in as that email without Cloudflare Access. `vp run owner:reset:local` resets the local owner.
+Put `OWNER_EMAIL=owner@example.com` in `.dev.vars` and run `vp run dev`. Locally, OS signs in as that email without Cloudflare Access, so it listens only on localhost. To open it from another device, bind it to one address that device can reach, such as your Tailscale IP: `vp run dev --host <ip>`. Anyone who reaches that address is signed in as the owner. `vp run owner:reset:local` resets the local owner.

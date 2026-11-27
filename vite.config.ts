@@ -14,7 +14,7 @@ export default defineConfig(async ({ command }) => ({
   define: {
     SYNTHETIC_OWNER: JSON.stringify(command === "serve"),
   },
-  server: { host: true, strictPort: true },
+  server: { strictPort: true },
   plugins: testing ? [] : [cloudflare()],
   test: {
     projects: testing
