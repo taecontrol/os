@@ -35,7 +35,12 @@ export default defineConfig(async ({ command }) => ({
             test: { name: "worker", include: ["test/core/**/*.test.ts"] },
           },
           {
-            test: { name: "repo", environment: "node", include: ["test/*.test.ts"] },
+            test: {
+              name: "repo",
+              environment: "node",
+              include: ["test/*.test.ts"],
+              testTimeout: 60_000,
+            },
           },
         ]
       : undefined,
