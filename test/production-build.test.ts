@@ -1,17 +1,9 @@
 import { spawnSync } from "node:child_process";
-import {
-  cpSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { unstable_startWorker } from "wrangler";
 import { describe, expect, it } from "vite-plus/test";
+import { checkoutCopy, withoutVitest } from "./checkout-copy.ts";
 
 const syntheticOwnerModule = "src/core/synthetic-owner.ts";
 
@@ -22,24 +14,8 @@ const completeConfig = {
   ACCESS_AUDIENCE: "a".repeat(64),
 };
 
-const notCopied = new Set([".git", ".work", ".wrangler", ".dev.vars", "dist", "node_modules"]);
-
-function checkoutCopy(): string {
-  const checkout = process.cwd();
-  const root = mkdtempSync(join(tmpdir(), "os-production-build-"));
-  cpSync(checkout, root, {
-    recursive: true,
-    filter: (source) => !notCopied.has(relative(checkout, source).split("/")[0] ?? ""),
-  });
-  symlinkSync(join(checkout, "node_modules"), join(root, "node_modules"), "dir");
-  return root;
-}
-
 function buildEnvironment(nodeEnv: string | undefined): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: nodeEnv };
-  for (const key of Object.keys(environment)) {
-    if (key.startsWith("VITEST")) delete environment[key];
-  }
+  const environment = withoutVitest({ NODE_ENV: nodeEnv });
   if (nodeEnv === undefined) delete environment.NODE_ENV;
   return environment;
 }
@@ -77,7 +53,7 @@ describe.each([
   { label: "test", nodeEnv: "test" },
 ])("vp build with NODE_ENV $label", ({ nodeEnv }) => {
   it("ships a Worker without the synthetic owner", { timeout: 120_000 }, async () => {
-    const root = checkoutCopy();
+    const root = checkoutCopy("os-production-build-");
     try {
       const build = spawnSync("vp", ["build"], {
         cwd: root,
