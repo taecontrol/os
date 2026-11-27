@@ -96,20 +96,12 @@ export const makeAccessIdentity = (): OwnerIdentity<
   let cached: CachedKeySet | undefined;
   let lastAttempt: FetchAttempt | undefined;
 
-  const successLandedSince = (previous: FetchAttempt | undefined) =>
-    lastAttempt !== previous && lastAttempt?.failed === false;
-
   const refetch = (issuer: AccessIssuer) =>
     Effect.gen(function* () {
-      const previous = lastAttempt;
-      const at = yield* Clock.currentTimeMillis;
       const outcome = yield* Effect.exit(downloadKeySet(issuer));
-      if (Exit.isSuccess(outcome)) {
-        lastAttempt = { at, failed: false };
-        cached = { issuer, keySet: outcome.value, fetchedAt: at };
-      } else if (!successLandedSince(previous)) {
-        lastAttempt = { at, failed: true };
-      }
+      const at = yield* Clock.currentTimeMillis;
+      lastAttempt = { at, failed: Exit.isFailure(outcome) };
+      if (Exit.isSuccess(outcome)) cached = { issuer, keySet: outcome.value, fetchedAt: at };
       return yield* outcome;
     });
 
