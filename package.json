@@ -4,17 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "wrangler d1 migrations apply DB --local && vp dev",
     "build": "vp build",
-    "check": "vp check",
-    "test": "vp test run"
+    "check": "vp check && wrangler types --check",
+    "test": "vp test run",
+    "owner:reset": "wrangler d1 execute DB --remote --command \"REPLACE INTO owner (id, generation, email) SELECT 1, generation + 1, NULL FROM owner WHERE id = 1\"",
+    "owner:reset:local": "wrangler d1 execute DB --local --command \"REPLACE INTO owner (id, generation, email) SELECT 1, generation + 1, NULL FROM owner WHERE id = 1\""
   },
   "dependencies": {
     "effect": "4.1.7"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1.70.2",
+    "@cloudflare/vitest-plugin": "1.9.2",
     "@types/node": "26.6.11",
     "typescript": "7.0.2",
-    "vite-plus": "1.8.0"
+    "vite-plus": "1.8.0",
+    "wrangler": "4.168.0"
   },
   "packageManager": "pnpm@12.23.0"
 }
