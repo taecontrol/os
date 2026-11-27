@@ -77,7 +77,7 @@ vp exec wrangler d1 migrations list DB --remote < /dev/null
 rm secrets.json
 ```
 
-`wrangler d1 migrations list` must report no migrations left to apply. Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`.
+`wrangler d1 migrations list` must report no migrations left to apply.
 
 ### 4. Check the installation
 
@@ -97,6 +97,22 @@ If an answer differs:
 Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `404` with `{"error":"not_found"}` because Cloudflare removes this header when a client sends it.
 
 Last, open `https://os.example.com/api/owner` in a browser and sign in. It shows your email. This first sign-in records you as the owner.
+
+## Update OS
+
+From the updated checkout, build OS and apply pending migrations to the existing D1 database.
+
+```sh
+vp build
+vp exec wrangler d1 migrations apply DB --remote < /dev/null
+vp exec wrangler d1 migrations list DB --remote < /dev/null
+```
+
+When Wrangler reports no migrations left to apply, deploy the Worker.
+
+```sh
+vp exec wrangler deploy < /dev/null
+```
 
 ## Change the owner
 
