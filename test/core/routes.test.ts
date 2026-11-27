@@ -8,6 +8,7 @@ const notFound = { status: 404, body: { error: "not_found" } };
 const agentCredential = { status: 400, body: { error: "agent_credential_rejected" } };
 const accessAssertion = { status: 400, body: { error: "access_assertion_rejected" } };
 const unauthenticated = { status: 401, body: { error: "unauthenticated" } };
+const invalidToken = { status: 401, body: { error: "invalid_token" } };
 
 const machinePaths = [
   "/mcp",
@@ -47,7 +48,7 @@ const rows: ReadonlyArray<Row> = [
   ...machinePaths.flatMap((path): ReadonlyArray<Row> => [
     { path, headers: { "cf-access-jwt-assertion": "" }, expected: accessAssertion, reads: 0 },
     { path, method: "POST", headers: owner, expected: accessAssertion, reads: 0 },
-    { path, headers: {}, expected: notFound, reads: 1 },
+    { path, headers: {}, expected: invalidToken, reads: 0 },
   ]),
   { path: "/.well-known", headers: owner, expected: notFound, reads: 0 },
   { path: "/agent", headers: owner, expected: notFound, reads: 0 },

@@ -1,6 +1,6 @@
 # OS
 
-OS is a Cloudflare Worker that one person, the owner, installs in their own Cloudflare account. Its goal is to give the owner's AI agents tools to act on what the owner cares about, such as memory, secrets, and Google accounts, and to show the owner what those agents did. Today OS has only owner sign-in through Cloudflare Access. Agents cannot connect to it yet.
+OS is a Cloudflare Worker that one person, the owner, installs in their own Cloudflare account. Its goal is to give the owner's AI agents tools to act on what the owner cares about, such as memory, secrets, and Google accounts, and to show the owner what those agents did. The owner signs in through Cloudflare Access and can manage agent connections and grants through the Core HTTP API.
 
 ## Install
 
@@ -83,18 +83,18 @@ rm secrets.json
 
 Without a session, run `curl -i https://os.example.com<path>` for each path below.
 
-| Path                                                                             | Expected answer                                                                    |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `404` with `{"error":"not_found"}`, from the Worker rather than an Access redirect |
-| `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain                                              |
+| Path                                                                             | Expected answer                                        |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `401` with `{"error":"invalid_token"}` from the Worker |
+| `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain                  |
 
 If an answer differs:
 
-- A redirect where the table expects `404` means the destinations of the OS machine routes application are wrong.
+- A redirect where the table expects `401` means the destinations of the OS machine routes application are wrong.
 - `503` with `{"error":"setup_incomplete"}` means a secret is missing or invalid. The `missing` field names it.
 - `503` with `{"error":"unavailable"}` usually means the migrations have not run.
 
-Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `404` with `{"error":"not_found"}`, because Cloudflare removes this header when a client sends it.
+Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `401` with `{"error":"invalid_token"}` because Cloudflare removes this header when a client sends it.
 
 Last, open `https://os.example.com/api/owner` in a browser and sign in. It shows your email. This first sign-in records you as the owner.
 
@@ -104,7 +104,7 @@ Last, open `https://os.example.com/api/owner` in a browser and sign in. It shows
 2. Create a secrets file as in step 3 that holds only `{"OWNER_EMAIL": "<new email>"}`. Run `vp exec wrangler deploy --secrets-file secrets.json < /dev/null`, then delete the file. This deploy sends the new version to all traffic. Do not roll it out gradually, because an older version that still serves requests accepts the old owner.
 3. Run `vp run owner:reset`.
 
-Until the reset, the new owner and every request to the machine paths get `503` with `{"error":"owner_locked"}`, and a session the previous owner still holds gets `403` with `{"error":"not_owner"}`. To go back without a reset, restore both the Allow policy and the old `OWNER_EMAIL`. The reset clears the recorded owner, and the new owner's first sign-in records them. The reset also deletes data that later versions tie to an owner; today there is none.
+Until the reset, the new owner and machine requests with a well-formed bearer get `503` with `{"error":"owner_locked"}`. A session the previous owner still holds gets `403` with `{"error":"not_owner"}`. To go back without a reset, restore both the Allow policy and the old `OWNER_EMAIL`. The reset clears the recorded owner and deletes their connections, grants, and audit entries. The new owner's first sign-in records them.
 
 ## Run locally
 

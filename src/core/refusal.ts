@@ -8,6 +8,12 @@ export class Unauthenticated extends Data.TaggedError("Unauthenticated") {}
 export class NotOwner extends Data.TaggedError("NotOwner") {}
 export class OwnerLocked extends Data.TaggedError("OwnerLocked") {}
 export class Unavailable extends Data.TaggedError("Unavailable") {}
+export class InvalidToken extends Data.TaggedError("InvalidToken") {}
+export class InvalidRequest extends Data.TaggedError("InvalidRequest") {}
+export class ConnectionNotFound extends Data.TaggedError("ConnectionNotFound") {}
+export class CapabilityNotFound extends Data.TaggedError("CapabilityNotFound") {}
+export class ConnectionRevoked extends Data.TaggedError("ConnectionRevoked") {}
+export class AuditEntryNotFound extends Data.TaggedError("AuditEntryNotFound") {}
 
 export type Refusal =
   | SetupIncomplete
@@ -16,7 +22,13 @@ export type Refusal =
   | Unauthenticated
   | NotOwner
   | OwnerLocked
-  | Unavailable;
+  | Unavailable
+  | InvalidToken
+  | InvalidRequest
+  | ConnectionNotFound
+  | CapabilityNotFound
+  | ConnectionRevoked
+  | AuditEntryNotFound;
 
 export const respond = (status: number, body: object): HttpServerResponse.HttpServerResponse =>
   HttpServerResponse.jsonUnsafe(body, { status, headers: { "cache-control": "no-store" } });
@@ -39,5 +51,21 @@ export const refuse = (refusal: Refusal): HttpServerResponse.HttpServerResponse 
       return respond(503, { error: "owner_locked" });
     case "Unavailable":
       return respond(503, { error: "unavailable" });
+    case "InvalidToken":
+      return HttpServerResponse.setHeader(
+        respond(401, { error: "invalid_token" }),
+        "www-authenticate",
+        'Bearer error="invalid_token"',
+      );
+    case "InvalidRequest":
+      return respond(400, { error: "invalid_request" });
+    case "ConnectionNotFound":
+      return respond(404, { error: "connection_not_found" });
+    case "CapabilityNotFound":
+      return respond(404, { error: "capability_not_found" });
+    case "ConnectionRevoked":
+      return respond(409, { error: "connection_revoked" });
+    case "AuditEntryNotFound":
+      return respond(404, { error: "audit_entry_not_found" });
   }
 };
