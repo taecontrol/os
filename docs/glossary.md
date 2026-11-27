@@ -6,7 +6,7 @@
 
 **Owner**: the one person an installation serves. They sign in through Cloudflare Access with the email in `OWNER_EMAIL`.
 
-**Owner generation**: a number in Core D1 that starts at 1 and goes up by one on every owner reset. Rows that belong to the owner carry the generation they were written under.
+**Owner generation**: a number in Core D1 that starts at 1 and goes up by one on every owner reset. Every owner-bound row belongs to one generation, directly or through a parent row.
 
 **Pinned owner**: the owner email recorded in Core D1 by the first verified sign-in. Only an owner reset clears it.
 
