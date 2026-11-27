@@ -11,8 +11,8 @@ Earlier work in Nook and google-accounts-mcp exposed four constraints that OS mu
 
 - **Owner and agent identities must stay separate.** Nook enabled Cloudflare Access Managed OAuth so MCP clients could connect without an OAuth server in the Worker. Because Managed OAuth gives those clients the owner's Access identity, an agent that reads its client's stored token can approve its own requests or change owner settings.
 - **Agents connect in two different ways.** Hosted and interactive MCP clients such as Claude, Claude Code, and ChatGPT expect OAuth 2.1, while local MCP clients, headless scripts, custom agents, and a future local CLI need direct bearer credentials.
-- **Unauthenticated OAuth token endpoints create a server-side request forgery risk.** As google-accounts-mcp recorded in its ADR-0002, an OAuth provider that fetches Client ID Metadata Documents and signing keys from URLs supplied in unauthenticated `/oauth/token` requests lets callers trigger requests to arbitrary hosts.
-- **Approvals cannot block Cloudflare Workers and cannot treat every action the same.** Nook's ADR-0021 and ADR-0022 showed that holding requests open for human approval collides with worker and client timeouts, and that repeatable secret uses need different approval lifetimes from irreversible actions such as sending email or permanent deletion.
+- **Unauthenticated OAuth token endpoints create a server-side request forgery risk.** An OAuth provider that fetches Client ID Metadata Documents and signing keys from URLs supplied in unauthenticated `/oauth/token` requests lets callers trigger requests to arbitrary hosts.
+- **Approvals cannot block Cloudflare Workers and cannot treat every action the same.** Holding requests open for human approval collides with worker and client timeouts, and repeatable secret uses need different approval lifetimes from irreversible actions such as sending email or permanent deletion.
 
 OS needs one owner sign-in model, one agent connection model, and one grant, approval, and audit gate in Core before building modules or the first notification flow.
 
@@ -82,12 +82,3 @@ Core enforces one grant model across Core and every module, defined by connectio
 - [Issue #6: An agent can send the owner a notification on their phone](https://github.com/taecontrol/os/issues/6)
 - [ADR-0001: Run OS on Cloudflare](0001-run-on-cloudflare.md)
 - [OS agent instructions](../../AGENTS.md)
-- [google-accounts-mcp ADR-0002: Screen token clients before provider fetches](https://github.com/taecontrol/google-accounts-mcp/blob/main/docs/adr/0002-screen-token-clients-before-provider-fetches.md)
-- [google-accounts-mcp ADR-0016: Make owner reset safe between statements](https://github.com/taecontrol/google-accounts-mcp/blob/main/docs/adr/0016-make-owner-reset-safe-between-statements.md)
-- [Nook ADR-0002: Hierarchical buckets as the authorization boundary for every tool](https://github.com/taecontrol/nook/blob/main/docs/adrs/0002-buckets-as-the-authorization-boundary.md)
-- [Nook ADR-0003: Cloudflare Access for the owner and Nook-issued tokens for machines](https://github.com/taecontrol/nook/blob/main/docs/adrs/0003-cloudflare-access-for-the-owner-and-nook-tokens-for-machines.md)
-- [Nook ADR-0010: Accept Nook tokens only under `/api/machine/*`](https://github.com/taecontrol/nook/blob/main/docs/adrs/0010-machine-tokens-only-under-the-machine-api-prefix.md)
-- [Nook ADR-0019: Agent session claims are unverified audit annotations](https://github.com/taecontrol/nook/blob/main/docs/adrs/0019-agent-session-claims-are-unverified-audit-annotations.md)
-- [Nook ADR-0020: Machine access can expire at an owner-chosen date, enforced in D1](https://github.com/taecontrol/nook/blob/main/docs/adrs/0020-machine-access-expires-at-an-owner-chosen-date-enforced-in-d1.md)
-- [Nook ADR-0021: Owner approval is decided by the values call and remembered per machine](https://github.com/taecontrol/nook/blob/main/docs/adrs/0021-owner-approval-is-decided-by-the-values-call-and-remembered-per-machine.md)
-- [Nook ADR-0022: `nook run` returns the approval link at once and waits only when resumed](https://github.com/taecontrol/nook/blob/main/docs/adrs/0022-nook-run-returns-the-approval-link-at-once-and-waits-only-when-resumed.md)
