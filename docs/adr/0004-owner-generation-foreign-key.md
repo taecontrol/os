@@ -13,9 +13,14 @@ google-accounts-mcp solved the same problem by deleting a list of tables. Those 
 
 ## Decision
 
-Every owner-bound root table in Core D1 carries `owner_generation INTEGER NOT NULL REFERENCES owner (generation) ON DELETE CASCADE`. A table that belongs to such a root references its parent row and cascades from it; it does not carry its own generation.
+Every owner-bound root table in Core D1 carries `owner_generation INTEGER NOT NULL REFERENCES owner (generation) ON DELETE CASCADE`. A descendant table, one that belongs to such a root, references its parent row and cascades from it. It also does one of two things: it references parents only by IDs that are never reused, such as random UUIDs, or it carries `owner_generation` itself with the same foreign key.
 
-The reset replaces the singleton `owner` row with the next generation in one statement. Replacing the row deletes the old generation, so SQLite's foreign keys delete every root row of that generation and, through them, every descendant, in the same statement. A write that arrives late with the old generation fails, because its parent generation no longer exists. A plain update of the generation fails while dependent rows exist, so the reset is the only way to move to the next generation.
+The reset replaces the singleton `owner` row with the next generation in one statement. Replacing the row deletes the old generation, so SQLite's foreign keys delete every root row of that generation and, through them, every descendant, in the same statement. A plain update of the generation fails while dependent rows exist, so the reset is the only way to move to the next generation.
+
+Each foreign key proves something different about a write that arrives late, after the reset:
+
+- A direct `owner_generation` reference rejects the write when it carries the old generation, because that generation no longer exists.
+- A reference to a parent row proves only that a row with that ID exists when the child is inserted. If the new owner's data reuses the ID, for example through an `INTEGER PRIMARY KEY` that starts again after the old rows are deleted, a late write meant for the old parent attaches to the new owner's row. Parent IDs that are never reused, or a generation column on the descendant, close this gap.
 
 SQLite enforces the rule on every write, so it covers future tables and every code path, and no caller has to apply it.
 
@@ -31,6 +36,7 @@ Core D1 also follows these storage conventions, so that every table fits this ru
 - A reset is atomic and covers tables added later without changing the reset.
 - A migration must never drop or rebuild the `owner` table. Dropping the parent cascades across all owner-bound data, even when foreign key checks are deferred. Change `owner` in place with `ALTER TABLE`.
 - Each new owner-bound root table must declare the foreign key. A root table without it survives the reset, and no runtime check notices.
+- Each new descendant table must reference parents by IDs that are never reused or carry `owner_generation`. A descendant without either can receive a late write from the previous owner, and no runtime check notices.
 - The reset is not conditioned on the generation it expects. Repeating it after the new owner has signed in unpins that owner and deletes their rows; they sign in again.
 
 ## Alternatives considered
@@ -38,4 +44,4 @@ Core D1 also follows these storage conventions, so that every table fits this ru
 - **A deletion trigger per table.** It runs when the generation changes, but a write authorized before the reset can still land after it with the old generation.
 - **Filtering every read by generation.** Old rows stay in the database, and every query that forgets the filter revives them.
 - **A reset that deletes a list of tables.** It ties the reset to a list every new table must join. In google-accounts-mcp the deletes were not atomic, and the reset needed a staged state machine.
-- **A generation column on every descendant table.** It repeats ownership the parent reference already gives, and adds a consistency rule between the two.
+- **Requiring a generation column on every descendant table.** When parent IDs are never reused, it repeats ownership the parent reference already gives. A descendant table can still choose it instead of never-reused parent IDs.
