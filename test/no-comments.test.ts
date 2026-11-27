@@ -9,7 +9,7 @@ function lintSnippet(source: string) {
   const file = join(dir, "fixture.ts");
   try {
     writeFileSync(file, source, "utf8");
-    return spawnSync("vp", ["lint", file], {
+    return spawnSync("vp", ["lint", "--format=default", file], {
       cwd: process.cwd(),
       encoding: "utf8",
     });
