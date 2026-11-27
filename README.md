@@ -27,7 +27,7 @@ vp exec wrangler whoami
 vp build
 ```
 
-If `wrangler whoami` says you are not authenticated, or shows a different account from the one that will run OS, run `vp exec wrangler login` and sign in. The deploy commands below read no input from the terminal, so Wrangler cannot ask you to sign in there.
+If `wrangler whoami` says you are not authenticated, or does not list the account that will run OS, run `vp exec wrangler login` and sign in. If it lists more than one account, copy the Account ID of the one that will run OS and run `export CLOUDFLARE_ACCOUNT_ID=<that Account ID>` in the same shell. Wrangler then uses that account for every command below. The deploy commands read no input from the terminal, so Wrangler cannot ask you to sign in or to choose an account there.
 
 Always deploy what `vp build` produced. The build is what leaves the local development owner out of the Worker.
 
@@ -52,7 +52,7 @@ vp exec wrangler d1 migrations list DB --remote < /dev/null
 rm secrets.json
 ```
 
-`wrangler d1 migrations list` must report no migrations left to apply. Until the migrations run, a signed-in request under `/api/` and any request to the machine route destinations from step 1 answer `503` with `{"error":"unavailable"}`. Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`.
+`wrangler d1 migrations list` must report no migrations left to apply. Until the migrations run, `curl -i https://os.example.com/mcp` answers `503` with `{"error":"unavailable"}` instead of the `404` that step 4 expects. Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`. If you set `CLOUDFLARE_ACCOUNT_ID`, set it again before later deploys and before the commands in [Change the owner](#change-the-owner).
 
 ### 4. Check the installation
 
