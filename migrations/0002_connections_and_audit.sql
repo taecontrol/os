@@ -2,7 +2,6 @@ CREATE TABLE connections (
   id TEXT PRIMARY KEY,
   owner_generation INTEGER NOT NULL REFERENCES owner (generation) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  token_hash TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
   revoked_at INTEGER

@@ -1,25 +1,81 @@
-import { Clock, Effect, Schema } from "effect";
-import { issueBearer } from "./bearer.ts";
-import { type Capability, GrantMode } from "./capabilities.ts";
+import { Brand, Clock, Effect, Result, Schema } from "effect";
+import { Bindings } from "./bindings.ts";
+import { type Capability, findCapability, GrantMode } from "./capabilities.ts";
 import { decodeStored, query } from "./d1.ts";
-import type { Generation } from "./owner.ts";
-import { ConnectionNotFound, ConnectionRevoked, Unavailable } from "./refusal.ts";
+import { Generation } from "./owner.ts";
+import {
+  CapabilityNotFound,
+  ConnectionNotFound,
+  ConnectionRevoked,
+  InvalidRequest,
+  InvalidToken,
+  Unavailable,
+} from "./refusal.ts";
+import { truncateCharacters } from "./text.ts";
 
-const StoredConnection = Schema.Struct({
+const Grants = Schema.Array(Schema.Struct({ capability: Schema.String, mode: GrantMode }));
+const ExpiryDays = Schema.Literals([7, 30, 90, 365]);
+
+const decodeRequest = Schema.decodeUnknownResult(
+  Schema.Struct({
+    name: Schema.Trim.check(
+      Schema.makeFilter((name) => name.length > 0 && truncateCharacters(name, 64) === name),
+    ),
+    expiresInDays: Schema.optionalKey(ExpiryDays),
+    grants: Schema.optionalKey(Grants),
+  }),
+);
+
+export interface ConnectionRequest {
+  readonly id: string;
+  readonly name: string;
+  readonly expiresInDays: typeof ExpiryDays.Type;
+  readonly grants: typeof Grants.Type;
+}
+
+export const parseConnectionRequest = (
+  input: unknown,
+): Result.Result<ConnectionRequest, InvalidRequest | CapabilityNotFound> => {
+  const parsed = decodeRequest(input);
+  if (Result.isFailure(parsed)) return Result.fail(new InvalidRequest());
+  const { name, expiresInDays = 90, grants = [] } = parsed.success;
+  const ids = new Set(grants.map((grant) => grant.capability));
+  if (ids.size !== grants.length) return Result.fail(new InvalidRequest());
+  if (grants.some((grant) => findCapability(grant.capability) === undefined)) {
+    return Result.fail(new CapabilityNotFound());
+  }
+  return Result.succeed({ id: crypto.randomUUID(), name, expiresInDays, grants });
+};
+
+export type Connection = {
+  readonly id: string;
+  readonly name: string;
+  readonly expiresAt: number;
+} & Brand.Brand<"Connection">;
+
+const connection = Brand.nominal<Connection>();
+
+const connectionFields = {
   id: Schema.String,
   name: Schema.String,
   expires_at: Schema.Int,
   revoked_at: Schema.NullOr(Schema.Int),
+};
+
+const decodeIdentity = decodeStored(
+  Schema.Struct({ ...connectionFields, owner_generation: Generation }),
+);
+
+const StoredConnection = Schema.Struct({
+  ...connectionFields,
   last_used_at: Schema.NullOr(Schema.Int),
-  grants: Schema.fromJsonString(
-    Schema.Array(Schema.Struct({ capability: Schema.String, mode: GrantMode })),
-  ),
+  grants: Schema.fromJsonString(Grants),
 });
 
 const decodeConnection = decodeStored(StoredConnection);
 const decodeConnections = decodeStored(Schema.Array(StoredConnection));
 
-export const connectionStatus = (
+const connectionStatus = (
   connection: { readonly revoked_at: number | null; readonly expires_at: number },
   now: number,
 ) => {
@@ -80,38 +136,60 @@ const changeConnection = (db: D1Database, id: string, change: () => D1PreparedSt
 const requireUnrevoked = <A extends { readonly revokedAt: number | null }>(connection: A) =>
   connection.revokedAt === null ? Effect.succeed(connection) : Effect.fail(new ConnectionRevoked());
 
-const expiresAfter = (now: number, days: number) => now + days * 86_400_000;
+const identityColumns = "id, name, owner_generation, expires_at, revoked_at";
 
-export const createConnection = (
-  db: D1Database,
-  generation: Generation,
-  name: string,
-  days: number,
-) =>
+export const createConnection = (generation: Generation, request: ConnectionRequest) =>
   Effect.gen(function* () {
-    const { token, hash } = yield* issueBearer;
-    const id = crypto.randomUUID();
-    const now = yield* Clock.currentTimeMillis;
-    const connection = yield* changeConnection(db, id, () =>
-      db
-        .prepare(`INSERT INTO connections (id, owner_generation, name, token_hash, created_at, expires_at)
-          VALUES (?, ?, ?, ?, ?, ?)`)
-        .bind(id, generation, name, hash, now, expiresAfter(now, days)),
+    const { id, name, expiresInDays, grants } = request;
+    if (grants.some((grant) => findCapability(grant.capability) === undefined)) {
+      return yield* new CapabilityNotFound();
+    }
+    const { DB } = yield* Bindings;
+    const createdAt = yield* Clock.currentTimeMillis;
+    const [, , read] = yield* query(() =>
+      DB.batch([
+        DB.prepare(`INSERT INTO connections (id, owner_generation, name, created_at, expires_at)
+          VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`).bind(
+          id,
+          generation,
+          name,
+          createdAt,
+          createdAt + expiresInDays * 86_400_000,
+        ),
+        DB.prepare(`INSERT INTO grants (connection_id, capability, mode)
+          SELECT ?1, json_extract(value, '$.capability'), json_extract(value, '$.mode')
+          FROM json_each(?2) WHERE changes() = 1`).bind(id, JSON.stringify(grants)),
+        DB.prepare(
+          `SELECT ${identityColumns} FROM connections WHERE id = ? AND owner_generation = ?`,
+        ).bind(id, generation),
+      ]),
     );
-    return { connection, token };
+    const row = yield* decodeIdentity(read?.results[0]);
+    const now = yield* Clock.currentTimeMillis;
+    if (connectionStatus(row, now) !== "active") return yield* new InvalidToken();
+    return connection({ id: row.id, name: row.name, expiresAt: row.expires_at });
   });
 
-export const rotateConnection = (db: D1Database, id: string, days: number) =>
+export const authenticateConnection = (id: string) =>
   Effect.gen(function* () {
-    const { token, hash } = yield* issueBearer;
+    const { DB } = yield* Bindings;
+    const raw = yield* query(() =>
+      DB.prepare(`SELECT ${identityColumns} FROM connections WHERE id = ?`).bind(id).first(),
+    );
+    if (raw === null) return yield* new InvalidToken();
+    const row = yield* decodeIdentity(raw);
     const now = yield* Clock.currentTimeMillis;
-    const connection = yield* changeConnection(db, id, () =>
-      db
-        .prepare(`UPDATE connections SET token_hash = ?, expires_at = ?
-          WHERE id = ? AND revoked_at IS NULL RETURNING id`)
-        .bind(hash, expiresAfter(now, days), id),
-    ).pipe(Effect.flatMap(requireUnrevoked));
-    return { connection, token };
+    const status = connectionStatus(row, now);
+    if (status === "active") {
+      return connection({ id: row.id, name: row.name, expiresAt: row.expires_at });
+    }
+    yield* query(() =>
+      DB.prepare(`INSERT INTO audit_entries (id, owner_generation, connection_id, outcome, reason, occurred_at, finished_at)
+        VALUES (?1, ?2, ?3, 'denied', ?4, ?5, ?5)`)
+        .bind(crypto.randomUUID(), row.owner_generation, row.id, `connection_${status}`, now)
+        .run(),
+    ).pipe(Effect.ignore);
+    return yield* new InvalidToken();
   });
 
 export const revokeConnection = (db: D1Database, id: string) =>

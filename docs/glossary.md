@@ -24,14 +24,12 @@
 
 **Connection**: an owner-approved identity an agent uses to act in OS. It has a name, an expiry, a revocation state, and grants.
 
-**Bearer token**: the secret an agent sends in the `Authorization` header to authenticate a connection. Core returns it when issuing it and stores only its hash. Rotation replaces it immediately.
-
 **Grant**: the owner's choice of `allow`, `ask`, or `deny` for one connection, capability, and scope. Without a grant, the gate denies the attempt.
 
 **Capability**: an action an agent can ask OS to take. Core's catalog declares each capability and its scope.
 
-**Gate**: the Core code that authenticates agent requests, decides whether to run a capability, and writes the attempt to the audit log before running it. It records the outcome after the action returns.
+**Gate**: the Core code that checks a connection and its grant before running a capability. It records the attempt before the action starts and the outcome after the action returns.
 
 **Audit entry**: the record of one attempt. It includes the verified connection, the capability when known, timestamps, the outcome, a reason when applicable, and any unverified annotations from the client.
 
-**Attempt**: an agent call that names a catalog capability, or any request with a recognized token whose connection is expired or revoked.
+**Attempt**: an agent call that names a catalog capability, or an authentication check that finds a revoked or expired connection.

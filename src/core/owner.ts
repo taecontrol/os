@@ -13,6 +13,10 @@ export class Owner extends Context.Service<
   { readonly email: OwnerEmail; readonly generation: Generation }
 >()("os/core/Owner") {}
 
+export class OwnerGeneration extends Context.Service<OwnerGeneration, Generation>()(
+  "os/core/OwnerGeneration",
+) {}
+
 const decodeStoredOwner = decodeStored(
   Schema.Struct({ generation: Generation, email: Schema.NullOr(Schema.String) }),
 );

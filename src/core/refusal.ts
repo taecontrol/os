@@ -23,7 +23,6 @@ export type Refusal =
   | NotOwner
   | OwnerLocked
   | Unavailable
-  | InvalidToken
   | InvalidRequest
   | ConnectionNotFound
   | CapabilityNotFound
@@ -51,12 +50,6 @@ export const refuse = (refusal: Refusal): HttpServerResponse.HttpServerResponse 
       return respond(503, { error: "owner_locked" });
     case "Unavailable":
       return respond(503, { error: "unavailable" });
-    case "InvalidToken":
-      return HttpServerResponse.setHeader(
-        respond(401, { error: "invalid_token" }),
-        "www-authenticate",
-        'Bearer error="invalid_token"',
-      );
     case "InvalidRequest":
       return respond(400, { error: "invalid_request" });
     case "ConnectionNotFound":

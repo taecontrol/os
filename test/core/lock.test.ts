@@ -19,14 +19,7 @@ describe("a configuration change", () => {
     expect(
       await answer(await installation.request("/api/owner", { headers: b, ...configuredB })),
     ).toEqual(ownerLocked);
-    expect(
-      await answer(
-        await installation.request("/mcp", {
-          ...configuredB,
-          headers: { authorization: `Bearer os_${"a".repeat(43)}` },
-        }),
-      ),
-    ).toEqual(ownerLocked);
+    expect(await answer(await installation.request("/mcp", configuredB))).toEqual(ownerLocked);
     expect(
       await answer(await installation.request("/api/owner", { headers: a, ...configuredB })),
     ).toEqual({

@@ -1,16 +1,13 @@
 import { Context, Effect, Layer } from "effect";
 import { HttpRouter, HttpServerRequest, type HttpServerResponse } from "effect/http";
-import { readBearer } from "./bearer.ts";
 import { Bindings } from "./bindings.ts";
 import type { ConfigKey } from "./config.ts";
-import { Connection, makeGate } from "./gate.ts";
 import type { OwnerIdentity } from "./identity.ts";
 import * as ownerApi from "./owner-api.ts";
-import { Owner, pinOwner, readOwner, requireUnlocked } from "./owner.ts";
+import { Owner, OwnerGeneration, pinOwner, readOwner, requireUnlocked } from "./owner.ts";
 import {
   AccessAssertionRejected,
   AgentCredentialRejected,
-  InvalidToken,
   notFound,
   NotOwner,
   refuse,
@@ -48,14 +45,13 @@ export const asMachine = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
     if (request.headers["cf-access-jwt-assertion"] !== undefined) {
       return yield* new AccessAssertionRejected();
     }
-    if (readBearer(request.headers.authorization) === undefined) return yield* new InvalidToken();
     const row = yield* readOwner(env.DB);
     yield* requireUnlocked(row, config.OWNER_EMAIL);
-    return yield* makeGate(env.DB).authenticate(request);
+    return row.generation;
   });
 
   return <R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, Refusal, R>) =>
-    guarded(machineGate)(Connection, handler);
+    guarded(machineGate)(OwnerGeneration, handler);
 };
 
 export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
@@ -88,9 +84,7 @@ export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
     ),
     HttpRouter.route("GET", "/api/capabilities", asOwner(ownerApi.capabilities)),
     HttpRouter.route("GET", "/api/connections", asOwner(ownerApi.connections)),
-    HttpRouter.route("POST", "/api/connections", asOwner(ownerApi.create)),
     HttpRouter.route("GET", "/api/connections/:id", asOwner(ownerApi.connection)),
-    HttpRouter.route("POST", "/api/connections/:id/rotate", asOwner(ownerApi.rotate)),
     HttpRouter.route("POST", "/api/connections/:id/revoke", asOwner(ownerApi.revoke)),
     HttpRouter.route("PUT", "/api/connections/:id/grants/:capability", asOwner(ownerApi.putGrant)),
     HttpRouter.route(
