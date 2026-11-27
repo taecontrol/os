@@ -1,39 +1,50 @@
 # OS
 
-OS gives one owner's AI agents the tools to act on what the owner cares about, such as memory, secrets, and Google accounts. Agents do the work through OS. The owner signs in to see what they did and approve what waits on them. Each installation serves one owner and runs in that owner's Cloudflare account.
+OS gives one person's AI agents the tools to act on what that person cares about, such as memory, secrets, and Google accounts. That person is the owner. Agents do the work through OS, and the owner signs in to see what they did and to approve what waits on them. Each installation serves one owner and runs as a Cloudflare Worker in the owner's Cloudflare account. So far, an installation has only owner sign-in; the modules come later.
 
 ## Install
 
-You need a Cloudflare account with a zone for the hostname OS will use, a Cloudflare Zero Trust organization, Node, and Vite+ (`vp`). The account must be on the Workers Paid plan, because the first sign-ins after a cold start use more CPU time than the Free plan allows. The steps below use `os.example.com`; use your own hostname.
+You need:
+
+- A Cloudflare account on the Workers Paid plan. On the Free plan, the first sign-ins after a cold start use more CPU time than the plan allows.
+- A zone in that account for the hostname OS will use, and a Cloudflare Zero Trust organization.
+- Node and Vite+ (`vp`).
+
+The steps below use `os.example.com`. Replace it with your hostname.
 
 ### 1. Create two Cloudflare Access applications
 
-In Zero Trust, create two self-hosted applications, both with Managed OAuth turned off:
+In Zero Trust, create two self-hosted applications. Turn off Managed OAuth in both.
 
-1. **OS**: the whole hostname `os.example.com`, with one Allow policy that includes only your email. Copy its Application Audience (AUD) tag.
-2. **OS machine routes**: the same hostname with these destinations, and one Bypass policy that includes everyone:
+1. **OS**: the whole hostname `os.example.com`, with one Allow policy that includes only your email. Copy its Application Audience (AUD) tag for step 3.
+2. **OS machine routes**: the same hostname with these four destinations, and one Bypass policy that includes everyone:
    - `os.example.com/mcp`
    - `os.example.com/oauth/token`
    - `os.example.com/.well-known/*`
    - `os.example.com/agent/*`
 
-   Keep exactly this list. Core refuses an Access assertion on these paths and requires one everywhere else under `/api/`.
+   Use exactly these destinations. Agents call these paths with their own credentials, so Access must let them through. Every path under `/api/` needs an Access sign-in, so a bypass that covers one of them locks you out of it.
 
-### 2. Build
+### 2. Sign in to Cloudflare and build
 
 ```sh
 vp install --frozen-lockfile
 vp exec wrangler whoami
+```
+
+If `wrangler whoami` says you are not signed in, or does not list the account that will run OS, run `vp exec wrangler login`. If it lists more than one account, copy the Account ID of the one that will run OS and run `export CLOUDFLARE_ACCOUNT_ID=<that Account ID>`. Set it in every shell where you run the commands below or the commands in [Change the owner](#change-the-owner). Those commands read no input from the terminal, so Wrangler cannot ask you there to sign in or to choose an account.
+
+Then build:
+
+```sh
 vp build
 ```
 
-If `wrangler whoami` says you are not authenticated, or does not list the account that will run OS, run `vp exec wrangler login` and sign in. If it lists more than one account, copy the Account ID of the one that will run OS and run `export CLOUDFLARE_ACCOUNT_ID=<that Account ID>` in the same shell. Wrangler then uses that account for every command below. The deploy commands read no input from the terminal, so Wrangler cannot ask you to sign in or to choose an account there.
-
-Always deploy what `vp build` produced. The build is what leaves the local development owner out of the Worker.
+Run `vp build` before every deploy. `wrangler deploy` deploys what the build produced, and the build leaves out the local sign-in that `vp run dev` uses.
 
 ### 3. Deploy for the first time
 
-Write the three secrets to a JSON file that only you can read:
+Write the three secrets to a JSON file that only you can read, such as `secrets.json`. `ACCESS_ISSUER` is your Zero Trust team domain.
 
 ```json
 {
@@ -43,7 +54,7 @@ Write the three secrets to a JSON file that only you can read:
 }
 ```
 
-Then deploy, apply the database migrations, and delete the file:
+Then deploy, apply the database migrations, list the ones left, and delete the file:
 
 ```sh
 vp exec wrangler deploy --domain os.example.com --secrets-file secrets.json < /dev/null
@@ -52,29 +63,31 @@ vp exec wrangler d1 migrations list DB --remote < /dev/null
 rm secrets.json
 ```
 
-`wrangler d1 migrations list` must report no migrations left to apply. Until the migrations run, `curl -i https://os.example.com/mcp` answers `503` with `{"error":"unavailable"}` instead of the `404` that step 4 expects. Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`. If you set `CLOUDFLARE_ACCOUNT_ID`, set it again before later deploys and before the commands in [Change the owner](#change-the-owner).
+`wrangler d1 migrations list` must report no migrations left to apply. Until the migrations run, `curl -i https://os.example.com/mcp` answers `503` with `{"error":"unavailable"}`, not the `404` that step 4 expects.
+
+Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`.
 
 ### 4. Check the installation
 
-Run `curl -i https://os.example.com<path>` without a session for each path below. A different answer usually means the destinations of the OS machine routes application from step 1 are wrong.
+Without a session, run `curl -i https://os.example.com<path>` for each path below. A different answer usually means the destinations of the OS machine routes application are wrong.
 
 | Path                                                                             | Expected answer                                                                    |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `404` with `{"error":"not_found"}`, from the Worker rather than an Access redirect |
 | `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain                                              |
 
-Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It also answers `404` with `{"error":"not_found"}`. Cloudflare removes a `Cf-Access-Jwt-Assertion` header that a client sends, so the header never reaches the Worker.
+Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `404` with `{"error":"not_found"}`, because Cloudflare removes this header when a client sends it.
 
-Last, open `https://os.example.com/api/owner` in a browser, sign in, and check that it shows your email. That first sign-in pins you as the owner.
+Last, open `https://os.example.com/api/owner` in a browser and sign in. It shows your email. This first sign-in records you as the owner.
 
 ## Change the owner
 
 1. Change the Allow policy of the OS Access application to the new email.
-2. Write `{"OWNER_EMAIL": "<new email>"}` to a secrets file, deploy it in one step with `vp exec wrangler deploy --secrets-file secrets.json < /dev/null`, and delete the file. Never roll this change out gradually: an older version would keep accepting the old owner.
+2. Write `{"OWNER_EMAIL": "<new email>"}` to a secrets file, run `vp exec wrangler deploy --secrets-file secrets.json < /dev/null`, and delete the file. Deploy it to all traffic at once. An older version that still serves requests accepts the old owner.
 3. Run `vp run owner:reset`.
 
-Until the reset, the new owner and every agent get `503` with `{"error":"owner_locked"}`, and a session the previous owner still holds gets `403` with `{"error":"not_owner"}`. Restoring the old `OWNER_EMAIL` unlocks it without a reset. The reset deletes everything that belonged to the previous owner, such as agent connections, and the new owner pins themselves at their first sign-in.
+Until the reset, the new owner and every agent get `503` with `{"error":"owner_locked"}`, and a session the previous owner still holds gets `403` with `{"error":"not_owner"}`. Deploying the old `OWNER_EMAIL` again unlocks the installation without a reset. The reset deletes everything that belonged to the previous owner, such as agent connections. The new owner's first sign-in records them as the owner.
 
 ## Run locally
 
-Put `OWNER_EMAIL=owner@example.com` in `.dev.vars` and run `vp run dev`. Locally, OS signs in as that email without Cloudflare Access, so it listens only on localhost. To open it from another device, bind it to one address that device can reach, such as your Tailscale IP: `vp run dev --host <ip>`. OS signs in anyone who reaches that address as the owner. `vp run owner:reset:local` resets the local owner.
+Put `OWNER_EMAIL=owner@example.com` in `.dev.vars` and run `vp run dev`. Locally, OS signs in every visitor as that email, without Cloudflare Access, so it listens only on localhost. To open it from another device, bind it to one address that device can reach, such as a Tailscale IP: `vp run dev --host <ip>`. OS signs in anyone who reaches that address as the owner. `vp run owner:reset:local` resets the local owner.
