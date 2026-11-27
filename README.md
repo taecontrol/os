@@ -23,8 +23,11 @@ In Zero Trust, create two self-hosted applications, both with Managed OAuth turn
 
 ```sh
 vp install --frozen-lockfile
+vp exec wrangler whoami
 vp build
 ```
+
+If `wrangler whoami` says you are not authenticated, or shows a different account from the one that will run OS, run `vp exec wrangler login` and sign in. The deploy commands below read no input from the terminal, so Wrangler cannot ask you to sign in there.
 
 Always deploy what `vp build` produced. The build is what leaves the local development owner out of the Worker.
 
@@ -49,17 +52,20 @@ vp exec wrangler d1 migrations list DB --remote < /dev/null
 rm secrets.json
 ```
 
-The last command must report no migrations left to apply. Until the migrations run, Core answers `503`. Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`.
+`wrangler d1 migrations list` must report no migrations left to apply. Until the migrations run, a signed-in request under `/api/` and any request to the machine route destinations from step 1 answer `503` with `{"error":"unavailable"}`. Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`.
 
 ### 4. Check the installation
 
-Without a session:
+Run `curl -i https://os.example.com<path>` without a session for each path below. A different answer usually means the destinations of the OS machine routes application from step 1 are wrong.
 
-- `curl -i https://os.example.com/mcp` answers `404` with `{"error":"not_found"}`, from the Worker rather than an Access redirect.
-- `curl -i https://os.example.com/api/owner` redirects to your Access team domain.
-- `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp` answers `400` with `{"error":"access_assertion_rejected"}`.
+| Path                                                                             | Expected answer                                                                    |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `404` with `{"error":"not_found"}`, from the Worker rather than an Access redirect |
+| `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain                                              |
 
-Then open `https://os.example.com/api/owner` in a browser, sign in, and check that it shows your email. That first sign-in pins you as the owner.
+Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It answers `400` with `{"error":"access_assertion_rejected"}`.
+
+Last, open `https://os.example.com/api/owner` in a browser, sign in, and check that it shows your email. That first sign-in pins you as the owner.
 
 ## Change the owner
 
@@ -67,8 +73,8 @@ Then open `https://os.example.com/api/owner` in a browser, sign in, and check th
 2. Write `{"OWNER_EMAIL": "<new email>"}` to a secrets file, deploy it in one step with `vp exec wrangler deploy --secrets-file secrets.json < /dev/null`, and delete the file. Never roll this change out gradually: an older version would keep accepting the old owner.
 3. Run `vp run owner:reset`.
 
-Until the reset, OS refuses everyone with `owner_locked`. Restoring the old `OWNER_EMAIL` unlocks it without a reset. The reset deletes everything that belonged to the previous owner, such as agent connections, and the new owner pins themselves at their first sign-in.
+Until the reset, the new owner and every agent get `503` with `{"error":"owner_locked"}`, and a session the previous owner still holds gets `403` with `{"error":"not_owner"}`. Restoring the old `OWNER_EMAIL` unlocks it without a reset. The reset deletes everything that belonged to the previous owner, such as agent connections, and the new owner pins themselves at their first sign-in.
 
 ## Run locally
 
-Put `OWNER_EMAIL=owner@example.com` in `.dev.vars` and run `vp run dev`. Locally, OS signs in as that email without Cloudflare Access, so it listens only on localhost. To open it from another device, bind it to one address that device can reach, such as your Tailscale IP: `vp run dev --host <ip>`. Anyone who reaches that address is signed in as the owner. `vp run owner:reset:local` resets the local owner.
+Put `OWNER_EMAIL=owner@example.com` in `.dev.vars` and run `vp run dev`. Locally, OS signs in as that email without Cloudflare Access, so it listens only on localhost. To open it from another device, bind it to one address that device can reach, such as your Tailscale IP: `vp run dev --host <ip>`. OS signs in anyone who reaches that address as the owner. `vp run owner:reset:local` resets the local owner.
