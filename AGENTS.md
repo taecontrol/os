@@ -9,7 +9,7 @@ OS is public, and anyone should be able to install it. Each installation serves 
 ## How to decide
 
 - Agents do the work; the owner keeps control. Every capability starts as an agent tool. The PWA is where the owner sees what agents did, approves what waits on them, and gets notified on their phone.
-- OS feels like one product. One permission concept spans every module, one inbox holds agent activity and pending approvals, and turning a module on needs no setup outside OS.
+- OS feels like one product. One permission concept spans every module, and one inbox holds agent activity and pending approvals. The owner's agent handles module installation and asks the owner only for what it cannot obtain alone. Toggling an installed module on or off is instant inside OS.
 - Design mobile first. The web app feels instant: preload routes and data on intent, cache queries, and apply predictable writes optimistically. A cold open shows its first screen within 1 s on a 4G phone network, and navigation after intent takes under 100 ms.
 - When two designs are both valid, choose the one that grants less by default and fails closed.
 - Use one stack: TypeScript and Effect, with Vite+ as the toolchain. Build interfaces from ui-sdk components rather than custom controls. Introduce another language, framework, or UI library only for a concrete reason, recorded in an ADR.
