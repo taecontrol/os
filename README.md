@@ -4,7 +4,7 @@ OS gives one owner's AI agents the tools to act on what the owner cares about, s
 
 ## Install
 
-You need a Cloudflare account with a zone for the hostname OS will use, a Cloudflare Zero Trust organization, Node, and Vite+ (`vp`). The steps below use `os.example.com`; use your own hostname.
+You need a Cloudflare account with a zone for the hostname OS will use, a Cloudflare Zero Trust organization, Node, and Vite+ (`vp`). The account must be on the Workers Paid plan, because the first sign-ins after a cold start use more CPU time than the Free plan allows. The steps below use `os.example.com`; use your own hostname.
 
 ### 1. Create two Cloudflare Access applications
 
@@ -63,7 +63,7 @@ Run `curl -i https://os.example.com<path>` without a session for each path below
 | `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `404` with `{"error":"not_found"}`, from the Worker rather than an Access redirect |
 | `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain                                              |
 
-Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It answers `400` with `{"error":"access_assertion_rejected"}`.
+Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It also answers `404` with `{"error":"not_found"}`. Cloudflare removes a `Cf-Access-Jwt-Assertion` header that a client sends, so the header never reaches the Worker.
 
 Last, open `https://os.example.com/api/owner` in a browser, sign in, and check that it shows your email. That first sign-in pins you as the owner.
 
