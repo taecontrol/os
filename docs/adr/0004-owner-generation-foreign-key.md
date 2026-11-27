@@ -22,7 +22,7 @@ Each foreign key proves something different about a write that arrives late, aft
 - A direct `owner_generation` reference rejects the write when it carries the old generation, because that generation no longer exists.
 - A reference to a parent row proves only that a row with that ID exists when the child is inserted. If the new owner's data reuses the ID, for example through an `INTEGER PRIMARY KEY` that starts again after the old rows are deleted, a late write meant for the old parent attaches to the new owner's row. Parent IDs that are never reused, or a generation column on the descendant, close this gap.
 
-SQLite enforces the rule on every write, so it covers future tables and every code path, and no caller has to apply it.
+SQLite checks these references on every insert and on every update that changes one, in future tables and on every code path, and no caller has to apply it. A foreign key checks only the references a row stores. It does not know which generation authorized a write, so a late update that leaves those references valid still succeeds. For example, an edit addressed to an old row's ID changes the new owner's row when the new owner reused that ID.
 
 Core D1 also follows these storage conventions, so that every table fits this rule and reads the same way:
 
