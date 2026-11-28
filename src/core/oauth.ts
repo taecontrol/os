@@ -4,7 +4,7 @@ import {
   OAuthError,
   type TokenExchangeCallbackOptions,
 } from "@cloudflare/workers-oauth-provider";
-import { Clock, Effect, Result, Schema } from "effect";
+import { Clock, Effect, Result, Schema, Struct } from "effect";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
 import { Bindings, Execution } from "./bindings.ts";
 import {
@@ -141,10 +141,22 @@ export const tokenEndpoint = Effect.gen(function* () {
   return HttpServerResponse.fromWeb(yield* serve(request));
 });
 
-export const authorizationServerMetadata = webRequest.pipe(
-  Effect.flatMap(serve),
-  Effect.map(HttpServerResponse.fromWeb),
-);
+export const authorizationServerMetadata = Effect.gen(function* () {
+  const request = yield* webRequest;
+  const response = yield* serve(request);
+  if (request.method !== "GET" || response.status !== 200) {
+    return HttpServerResponse.fromWeb(response);
+  }
+  const metadata = yield* Effect.tryPromise({
+    try: () => response.json<Record<string, unknown>>(),
+    catch: () => new Unavailable(),
+  });
+  const publicClientsOnly = {
+    ...Struct.omit(metadata, ["token_endpoint_auth_signing_alg_values_supported"]),
+    token_endpoint_auth_methods_supported: ["none"],
+  };
+  return HttpServerResponse.fromWeb(new Response(JSON.stringify(publicClientsOnly), response));
+});
 
 export const protectedResourceMetadata = webRequest.pipe(
   Effect.map((request) => {
