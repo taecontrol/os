@@ -113,7 +113,9 @@ vp exec wrangler d1 migrations list DB --remote < /dev/null
 
 Before you deploy, check **SameSite Attribute** for the **OS** Access application using [the cookie instructions in step 1](#1-create-two-cloudflare-access-applications). Set it to **Lax** or **Strict** and save if needed.
 
-Deploy the Worker once the cookie setting is correct and Wrangler reports no migrations left to apply.
+If the setting was **None**, edit **OS** again after saving and select **Revoke existing tokens** to end all active OS sessions, including any whose `CF_Authorization` cookie still has `SameSite=None`. [Cloudflare Access session revocation](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/#per-application)
+
+Deploy the Worker once you finish the Access steps and Wrangler reports no migrations left to apply.
 
 ```sh
 vp exec wrangler deploy < /dev/null
