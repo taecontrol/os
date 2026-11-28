@@ -1,5 +1,5 @@
 import { AuthorizationError, authorizationErrorRedirect } from "@cloudflare/workers-oauth-provider";
-import { Clock, Effect, Schema } from "effect";
+import { Clock, Duration, Effect, Schema } from "effect";
 import { Hex } from "effect/encoding";
 import { HttpServerResponse } from "effect/http";
 import { Bindings } from "./bindings.ts";
@@ -11,6 +11,8 @@ import { Owner } from "./owner.ts";
 import { ConsentNotFound, type InvalidRequest, noStore, Unavailable } from "./refusal.ts";
 
 const consentSeconds = 600;
+
+const kvSameKeyWriteInterval = Duration.seconds(1);
 
 const StoredConsent = Schema.Struct({
   authRequest: Schema.Struct({
@@ -120,5 +122,6 @@ export const decideConsent = (
         }),
       catch: () => new Unavailable(),
     });
+    yield* Effect.sleep(kvSameKeyWriteInterval);
     return { redirectUrl: redirectTo };
   });
