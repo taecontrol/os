@@ -1,4 +1,4 @@
-import { applyD1Migrations, reset } from "cloudflare:test";
+import { applyD1Migrations, createExecutionContext, reset } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { vi } from "vite-plus/test";
 import { makeAccessIdentity } from "../../src/core/access.ts";
@@ -109,6 +109,7 @@ export const install = async (keys: ReadonlyArray<SigningKey>) => {
           headers: options.headers ?? {},
         }),
         { ...env, DB: countingDb, ...options.env } as Env,
+        createExecutionContext(),
       ),
     serveKeySet: (next: () => Promise<Response>) => {
       respond = next;

@@ -5,14 +5,15 @@ import { getAuditEntry, listAuditEntries } from "./audit.ts";
 import { Bindings } from "./bindings.ts";
 import { capabilityCatalog, findCapability, type GrantMode, grantModes } from "./capabilities.ts";
 import { changeGrant, getConnection, listConnections, revokeConnection } from "./connections.ts";
-import { GrantPayload, OwnerApi, OwnerApiGroup } from "./owner-contract.ts";
+import { decideConsent, describeConsent } from "./consent.ts";
+import { ConsentDecision, GrantPayload, OwnerApi, OwnerApiGroup } from "./owner-contract.ts";
 import { CapabilityNotFound, InvalidRequest, refuse, type Refusal } from "./refusal.ts";
 
+const refusing = <A, R>(effect: Effect.Effect<A, Refusal, R>) =>
+  effect.pipe(Effect.catch((error) => Effect.succeed(refuse(error))));
+
 const withDatabase = <A>(operation: (db: D1Database) => Effect.Effect<A, Refusal>) =>
-  Bindings.pipe(
-    Effect.flatMap(({ DB }) => operation(DB)),
-    Effect.catch((error) => Effect.succeed(refuse(error))),
-  );
+  refusing(Bindings.pipe(Effect.flatMap(({ DB }) => operation(DB))));
 
 const updateGrant = (
   id: string,
@@ -28,6 +29,7 @@ const updateGrant = (
   );
 
 const decodeGrant = HttpIncomingMessage.schemaBodyJson(GrantPayload);
+const decodeDecision = HttpIncomingMessage.schemaBodyJson(ConsentDecision);
 
 const handlers = HttpApiBuilder.group(OwnerApi, OwnerApiGroup.identifier, (group) =>
   group
@@ -55,7 +57,16 @@ const handlers = HttpApiBuilder.group(OwnerApi, OwnerApiGroup.identifier, (group
         listAuditEntries(db, { ...query, limit: Math.min(query.limit ?? 50, 100) }),
       ),
     )
-    .handle("auditEntry", ({ params }) => withDatabase((db) => getAuditEntry(db, params.id))),
+    .handle("auditEntry", ({ params }) => withDatabase((db) => getAuditEntry(db, params.id)))
+    .handle("consent", ({ params }) => refusing(describeConsent(params.id)))
+    .handleRaw("decideConsent", ({ params, request }) =>
+      refusing(
+        decideConsent(
+          params.id,
+          decodeDecision(request).pipe(Effect.mapError(() => new InvalidRequest())),
+        ),
+      ),
+    ),
 );
 
 export const ownerApiRoutes = HttpApiBuilder.layer(OwnerApi).pipe(

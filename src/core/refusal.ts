@@ -15,6 +15,11 @@ export class ConnectionNotFound extends Data.TaggedError("ConnectionNotFound") {
 export class CapabilityNotFound extends Data.TaggedError("CapabilityNotFound") {}
 export class ConnectionRevoked extends Data.TaggedError("ConnectionRevoked") {}
 export class AuditEntryNotFound extends Data.TaggedError("AuditEntryNotFound") {}
+export class InvalidClient extends Data.TaggedError("InvalidClient") {}
+export class ConsentNotFound extends Data.TaggedError("ConsentNotFound") {}
+export class BearerChallenge extends Data.TaggedError("BearerChallenge")<{
+  readonly header: string;
+}> {}
 
 export type Refusal =
   | SetupIncomplete
@@ -28,7 +33,10 @@ export type Refusal =
   | ConnectionNotFound
   | CapabilityNotFound
   | ConnectionRevoked
-  | AuditEntryNotFound;
+  | AuditEntryNotFound
+  | InvalidClient
+  | ConsentNotFound
+  | BearerChallenge;
 
 const refusals = {
   SetupIncomplete: [503, "setup_incomplete"],
@@ -43,6 +51,9 @@ const refusals = {
   CapabilityNotFound: [404, "capability_not_found"],
   ConnectionRevoked: [409, "connection_revoked"],
   AuditEntryNotFound: [404, "audit_entry_not_found"],
+  InvalidClient: [401, "invalid_client"],
+  ConsentNotFound: [404, "consent_not_found"],
+  BearerChallenge: [401, "invalid_token"],
 } as const satisfies Record<Refusal["_tag"], readonly [number, string]>;
 
 export const refusalSchema = <Tag extends Exclude<Refusal["_tag"], "SetupIncomplete">>(
@@ -68,8 +79,11 @@ export const notFound = respond(404, { error: "not_found" });
 
 export const refuse = (refusal: Refusal): HttpServerResponse.HttpServerResponse => {
   const [status, error] = refusals[refusal._tag];
-  return respond(
+  const response = respond(
     status,
     refusal._tag === "SetupIncomplete" ? { error, missing: refusal.missing } : { error },
   );
+  return refusal._tag === "BearerChallenge"
+    ? HttpServerResponse.setHeader(response, "www-authenticate", refusal.header)
+    : response;
 };

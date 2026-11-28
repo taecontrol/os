@@ -5,5 +5,5 @@ import { syntheticOwner } from "./synthetic-owner.ts";
 const core = SYNTHETIC_OWNER ? makeCore(syntheticOwner) : makeCore(makeAccessIdentity());
 
 export default {
-  fetch: (request, env) => core(request, env),
+  fetch: (request, env, execution) => core(request, env, execution),
 } satisfies ExportedHandler<Env>;
