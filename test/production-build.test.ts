@@ -66,6 +66,10 @@ describe.each([
       expect(
         modulesInWorker(workerDir).filter((module) => module.endsWith(syntheticOwnerModule)),
       ).toEqual([]);
+      const deployed = JSON.parse(readFileSync(join(workerDir, "wrangler.json"), "utf8")) as {
+        readonly observability?: { readonly redact_query_string?: unknown };
+      };
+      expect(deployed.observability?.redact_query_string).toBe(true);
 
       expect(await ownerResponse(workerDir, completeConfig)).toEqual({
         status: 401,
