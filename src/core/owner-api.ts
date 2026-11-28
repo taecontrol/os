@@ -1,86 +1,64 @@
-import { Effect, Schema } from "effect";
-import { HttpIncomingMessage, HttpRouter, HttpServerRequest } from "effect/http";
-import { AuditCursor, getAuditEntry, listAuditEntries } from "./audit.ts";
+import { Effect, Layer } from "effect";
+import { HttpIncomingMessage, HttpServer } from "effect/http";
+import { HttpApiBuilder } from "effect/http-api";
+import { getAuditEntry, listAuditEntries } from "./audit.ts";
 import { Bindings } from "./bindings.ts";
-import { capabilityCatalog, findCapability, GrantMode, grantModes } from "./capabilities.ts";
+import { capabilityCatalog, findCapability, type GrantMode, grantModes } from "./capabilities.ts";
 import { changeGrant, getConnection, listConnections, revokeConnection } from "./connections.ts";
-import { CapabilityNotFound, InvalidRequest, respond } from "./refusal.ts";
+import { GrantPayload, OwnerApi, OwnerApiGroup } from "./owner-contract.ts";
+import { CapabilityNotFound, InvalidRequest, refuse, type Refusal } from "./refusal.ts";
 
-const AuditQuery = Schema.Struct({
-  connection: Schema.optionalKey(Schema.String),
-  cursor: Schema.optionalKey(AuditCursor),
-  limit: Schema.optionalKey(Schema.NumberFromString.check(Schema.isInt(), Schema.isGreaterThan(0))),
-});
-
-const invalidRequest = Effect.mapError(() => new InvalidRequest());
-
-const grantMode = HttpServerRequest.HttpServerRequest.pipe(
-  Effect.flatMap(HttpIncomingMessage.schemaBodyJson(Schema.Struct({ mode: GrantMode }))),
-  invalidRequest,
-);
-
-const resourceId = HttpRouter.schemaPathParams(Schema.Struct({ id: Schema.String })).pipe(
-  Effect.map(({ id }) => id),
-  invalidRequest,
-);
-
-const grantKey = Effect.gen(function* () {
-  const { id, capability } = yield* HttpRouter.schemaPathParams(
-    Schema.Struct({ id: Schema.String, capability: Schema.String }),
-  ).pipe(invalidRequest);
-  const declared = findCapability(capability);
-  if (declared === undefined) return yield* new CapabilityNotFound();
-  return { id, capability: declared };
-});
-
-export const capabilities = Effect.succeed(
-  respond(
-    200,
-    capabilityCatalog.map((capability) => ({ ...capability, modes: grantModes })),
-  ),
-);
-
-export const connections = Effect.gen(function* () {
-  const { DB } = yield* Bindings;
-  return respond(200, yield* listConnections(DB));
-});
-
-export const connection = Effect.gen(function* () {
-  const { DB } = yield* Bindings;
-  const id = yield* resourceId;
-  return respond(200, yield* getConnection(DB, id));
-});
-
-export const revoke = Effect.gen(function* () {
-  const { DB } = yield* Bindings;
-  const id = yield* resourceId;
-  return respond(200, yield* revokeConnection(DB, id));
-});
-
-export const putGrant = Effect.gen(function* () {
-  const { DB } = yield* Bindings;
-  const { id, capability } = yield* grantKey;
-  const { mode } = yield* grantMode;
-  return respond(200, yield* changeGrant(DB, id, capability, mode));
-});
-
-export const deleteGrant = Effect.gen(function* () {
-  const { DB } = yield* Bindings;
-  const { id, capability } = yield* grantKey;
-  return respond(200, yield* changeGrant(DB, id, capability, null));
-});
-
-export const audit = Effect.gen(function* () {
-  const { DB } = yield* Bindings;
-  const page = yield* HttpServerRequest.schemaSearchParams(AuditQuery).pipe(invalidRequest);
-  return respond(
-    200,
-    yield* listAuditEntries(DB, { ...page, limit: Math.min(page.limit ?? 50, 100) }),
+const withDatabase = <A>(operation: (db: D1Database) => Effect.Effect<A, Refusal>) =>
+  Bindings.pipe(
+    Effect.flatMap(({ DB }) => operation(DB)),
+    Effect.catch((error) => Effect.succeed(refuse(error))),
   );
-});
 
-export const auditEntry = Effect.gen(function* () {
-  const { DB } = yield* Bindings;
-  const id = yield* resourceId;
-  return respond(200, yield* getAuditEntry(DB, id));
-});
+const updateGrant = (
+  id: string,
+  capability: string,
+  mode: Effect.Effect<GrantMode | null, InvalidRequest>,
+) =>
+  withDatabase((db) =>
+    Effect.gen(function* () {
+      const declared = findCapability(capability);
+      if (declared === undefined) return yield* new CapabilityNotFound();
+      return yield* changeGrant(db, id, declared, yield* mode);
+    }),
+  );
+
+const decodeGrant = HttpIncomingMessage.schemaBodyJson(GrantPayload);
+
+const handlers = HttpApiBuilder.group(OwnerApi, OwnerApiGroup.identifier, (group) =>
+  group
+    .handle("capabilities", () =>
+      Effect.succeed(capabilityCatalog.map((capability) => ({ ...capability, modes: grantModes }))),
+    )
+    .handle("connections", () => withDatabase(listConnections))
+    .handle("connection", ({ params }) => withDatabase((db) => getConnection(db, params.id)))
+    .handle("revoke", ({ params }) => withDatabase((db) => revokeConnection(db, params.id)))
+    .handleRaw("putGrant", ({ params, request }) =>
+      updateGrant(
+        params.id,
+        params.capability,
+        decodeGrant(request).pipe(
+          Effect.map(({ mode }) => mode),
+          Effect.mapError(() => new InvalidRequest()),
+        ),
+      ),
+    )
+    .handle("deleteGrant", ({ params }) =>
+      updateGrant(params.id, params.capability, Effect.succeed(null)),
+    )
+    .handle("audit", ({ query }) =>
+      withDatabase((db) =>
+        listAuditEntries(db, { ...query, limit: Math.min(query.limit ?? 50, 100) }),
+      ),
+    )
+    .handle("auditEntry", ({ params }) => withDatabase((db) => getAuditEntry(db, params.id))),
+);
+
+export const ownerApiRoutes = HttpApiBuilder.layer(OwnerApi).pipe(
+  Layer.provide(handlers),
+  Layer.provide(HttpServer.layerServices),
+);

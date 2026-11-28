@@ -1,6 +1,6 @@
 import { Brand, Clock, Effect, Result, Schema } from "effect";
 import { Bindings } from "./bindings.ts";
-import { type Capability, findCapability, GrantMode } from "./capabilities.ts";
+import { type Capability, findCapability, type GrantMode, Grants } from "./capabilities.ts";
 import { decodeStored, query } from "./d1.ts";
 import { Generation } from "./owner.ts";
 import {
@@ -13,7 +13,6 @@ import {
 } from "./refusal.ts";
 import { truncateCharacters } from "./text.ts";
 
-const Grants = Schema.Array(Schema.Struct({ capability: Schema.String, mode: GrantMode }));
 const ExpiryDays = Schema.Literals([7, 30, 90, 365]);
 
 const decodeRequest = Schema.decodeUnknownResult(
@@ -78,7 +77,7 @@ const decodeConnections = decodeStored(Schema.Array(StoredConnection));
 const connectionStatus = (
   connection: { readonly revoked_at: number | null; readonly expires_at: number },
   now: number,
-) => {
+): "revoked" | "expired" | "active" => {
   if (connection.revoked_at !== null) return "revoked";
   return connection.expires_at <= now ? "expired" : "active";
 };

@@ -1,15 +1,16 @@
 import { Effect, Schema } from "effect";
 import { decodeStored, query } from "./d1.ts";
-import { AuditEntryNotFound } from "./refusal.ts";
+import { AuditEntryNotFound, InvalidRequest } from "./refusal.ts";
 
-export const AuditCursor = Schema.StringFromBase64Url.pipe(
+const AuditCursor = Schema.StringFromBase64Url.pipe(
   Schema.decodeTo(Schema.fromJsonString(Schema.Tuple([Schema.Int, Schema.String]))),
 );
 const encodeCursor = Schema.encodeSync(AuditCursor);
+const decodeCursor = Schema.decodeUnknownEffect(AuditCursor);
 
 interface AuditPage {
   readonly connection?: string;
-  readonly cursor?: typeof AuditCursor.Type;
+  readonly cursor?: string;
   readonly limit: number;
 }
 
@@ -35,7 +36,7 @@ const toEntry = (row: typeof StoredEntry.Type) => ({
   finishedAt: row.finished_at,
   connection: { id: row.connection_id, name: row.connection_name },
   capability: row.capability,
-  outcome: row.outcome ?? "unfinished",
+  outcome: row.outcome ?? ("unfinished" as const),
   reason: row.reason,
   annotation: { session: row.session, purpose: row.purpose },
 });
@@ -61,8 +62,11 @@ export const listAuditEntries = (db: D1Database, page: AuditPage) =>
       parameters.push(page.connection);
     }
     if (page.cursor !== undefined) {
+      const cursor = yield* decodeCursor(page.cursor).pipe(
+        Effect.mapError(() => new InvalidRequest()),
+      );
       conditions.push("(a.occurred_at, a.id) < (?, ?)");
-      parameters.push(...page.cursor);
+      parameters.push(...cursor);
     }
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
     const result = yield* query(() =>

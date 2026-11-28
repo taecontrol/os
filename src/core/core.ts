@@ -1,13 +1,17 @@
 import { Context, Effect, Layer } from "effect";
 import { HttpRouter, HttpServerRequest, type HttpServerResponse } from "effect/http";
+import { HttpApiError } from "effect/http-api";
 import { Bindings } from "./bindings.ts";
 import type { ConfigKey } from "./config.ts";
 import type { OwnerIdentity } from "./identity.ts";
-import * as ownerApi from "./owner-api.ts";
+import { ownerApiRoutes } from "./owner-api.ts";
+import { OwnerApiAccess } from "./owner-contract.ts";
 import { Owner, OwnerGeneration, pinOwner, readOwner, requireUnlocked } from "./owner.ts";
 import {
   AccessAssertionRejected,
   AgentCredentialRejected,
+  InvalidRequest,
+  noStore,
   notFound,
   NotOwner,
   refuse,
@@ -70,6 +74,25 @@ export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
   const asOwner = <R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, Refusal, R>) =>
     guarded(ownerGate)(Owner, handler);
   const asAgent = asMachine(identity);
+  const ownerAccess = Layer.succeed(OwnerApiAccess)((httpEffect) =>
+    asOwner(
+      httpEffect.pipe(
+        Effect.catch((error) =>
+          HttpApiError.HttpApiSchemaError.is(error) &&
+          error.kind !== "Body" &&
+          error.kind !== "ResponseHeaders"
+            ? Effect.fail(new InvalidRequest())
+            : Effect.die(error),
+        ),
+        Effect.map(noStore),
+      ),
+    ),
+  );
+  const apiRoutes = ownerApiRoutes.pipe(Layer.provide(ownerAccess)) as Layer.Layer<
+    never,
+    never,
+    HttpRouter.HttpRouter | HttpRouter.Request.From<"Requires", Bindings>
+  >;
 
   const routes = HttpRouter.addAll([
     HttpRouter.route(
@@ -82,25 +105,13 @@ export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
         }),
       ),
     ),
-    HttpRouter.route("GET", "/api/capabilities", asOwner(ownerApi.capabilities)),
-    HttpRouter.route("GET", "/api/connections", asOwner(ownerApi.connections)),
-    HttpRouter.route("GET", "/api/connections/:id", asOwner(ownerApi.connection)),
-    HttpRouter.route("POST", "/api/connections/:id/revoke", asOwner(ownerApi.revoke)),
-    HttpRouter.route("PUT", "/api/connections/:id/grants/:capability", asOwner(ownerApi.putGrant)),
-    HttpRouter.route(
-      "DELETE",
-      "/api/connections/:id/grants/:capability",
-      asOwner(ownerApi.deleteGrant),
-    ),
-    HttpRouter.route("GET", "/api/audit", asOwner(ownerApi.audit)),
-    HttpRouter.route("GET", "/api/audit/:id", asOwner(ownerApi.auditEntry)),
     HttpRouter.route("*", "/api/*", asOwner(Effect.succeed(notFound))),
     ...machinePaths.map((path) => HttpRouter.route("*", path, asAgent(Effect.succeed(notFound)))),
     ...bareWildcardBases.map((path) => HttpRouter.route("*", path, notFound)),
     HttpRouter.route("*", "/*", notFound),
   ]);
 
-  const { handler } = HttpRouter.toWebHandler(routes.pipe(Layer.provide(HttpRouter.layer)), {
+  const { handler } = HttpRouter.toWebHandler(Layer.merge(routes, apiRoutes), {
     disableLogger: true,
     routerConfig: {
       ignoreTrailingSlash: false,
