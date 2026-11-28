@@ -22,12 +22,13 @@ const StoredConsent = Schema.Struct({
     codeChallenge: Schema.optionalKey(Schema.String),
     codeChallengeMethod: Schema.optionalKey(Schema.String),
     resource: Schema.optionalKey(Schema.String),
-    issuer: Schema.optionalKey(Schema.String),
+    issuer: Schema.String,
   }),
   expiresAt: Schema.Int,
 });
 
 const decodeConsent = decodeStored(StoredConsent);
+const encodeConsent = Schema.encodeUnknownEffect(StoredConsent);
 
 const consentKey = (id: string) => `consent:${id}`;
 
@@ -53,15 +54,14 @@ export const authorize = Effect.gen(function* () {
   });
   const id = Hex.encode(crypto.getRandomValues(new Uint8Array(16)));
   const expiresAt = (yield* Clock.currentTimeMillis) + consentSeconds * 1000;
-  yield* kv((store) =>
-    store.put(
-      consentKey(id),
-      JSON.stringify({ authRequest, expiresAt } satisfies typeof StoredConsent.Encoded),
-      {
-        expirationTtl: consentSeconds,
-      },
+  yield* encodeConsent({ authRequest, expiresAt }).pipe(
+    Effect.flatMap((consent) =>
+      kv((store) =>
+        store.put(consentKey(id), JSON.stringify(consent), { expirationTtl: consentSeconds }),
+      ),
     ),
-  ).pipe(Effect.mapError((): RefusalReason => "unavailable"));
+    Effect.mapError((): RefusalReason => "unavailable"),
+  );
   return redirect(`/consent/${id}`);
 }).pipe(Effect.catch((reason) => Effect.succeed(redirect(`/consent/refused?reason=${reason}`))));
 
@@ -108,11 +108,10 @@ export const decideConsent = (
     );
     const { generation } = yield* Owner;
     yield* kv((store) => store.delete(consentKey(id)));
-    const { origin } = new URL((yield* webRequest).url);
     const env = yield* Bindings;
     const { redirectTo } = yield* Effect.tryPromise({
       try: () =>
-        oauthHelpers(origin, env).completeAuthorization({
+        oauthHelpers(authRequest.issuer, env).completeAuthorization({
           request: authRequest,
           userId: request.id,
           scope: authRequest.scope,
