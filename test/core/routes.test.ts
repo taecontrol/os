@@ -51,6 +51,11 @@ const rows: ReadonlyArray<Row> = [
     { path, method: "POST", headers: owner, expected: accessAssertion, reads: 0 },
     { path, headers: {}, expected: anonymous, reads: 1 },
   ]),
+  ...["/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource/mcp"].map(
+    (path): Row => ({ path, headers: owner, expected: accessAssertion, reads: 0 }),
+  ),
+  { path: "/authorize", headers: {}, expected: unauthenticated, reads: 0 },
+  { path: "/api/consent/x", method: "POST", headers: {}, expected: unauthenticated, reads: 0 },
   { path: "/.well-known", headers: owner, expected: notFound, reads: 0 },
   { path: "/agent", headers: owner, expected: notFound, reads: 0 },
   { path: "/mcpx", headers: owner, expected: notFound, reads: 0 },
