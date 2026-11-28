@@ -1,4 +1,4 @@
-import { Brand, Clock, Effect, Result, Schema } from "effect";
+import { Brand, Clock, Context, Effect, Result, Schema } from "effect";
 import { Bindings } from "./bindings.ts";
 import { type Capability, findCapability, type GrantMode, Grants } from "./capabilities.ts";
 import { decodeStored, query } from "./d1.ts";
@@ -15,6 +15,8 @@ import { truncateCharacters } from "./text.ts";
 
 const ExpiryDays = Schema.Literals([7, 30, 90]);
 
+export const defaultExpiryDays = 90 satisfies typeof ExpiryDays.Type;
+
 const decodeRequest = Schema.decodeUnknownResult(
   Schema.Struct({
     name: Schema.Trim.check(
@@ -25,19 +27,20 @@ const decodeRequest = Schema.decodeUnknownResult(
   }),
 );
 
-export interface ConnectionRequest {
-  readonly id: string;
-  readonly name: string;
-  readonly expiresInDays: typeof ExpiryDays.Type;
-  readonly grants: typeof Grants.Type;
-}
+export const ConnectionRequest = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  expiresInDays: ExpiryDays,
+  grants: Grants,
+});
+export type ConnectionRequest = typeof ConnectionRequest.Type;
 
 export const parseConnectionRequest = (
   input: unknown,
 ): Result.Result<ConnectionRequest, InvalidRequest | CapabilityNotFound> => {
   const parsed = decodeRequest(input);
   if (Result.isFailure(parsed)) return Result.fail(new InvalidRequest());
-  const { name, expiresInDays = 90, grants = [] } = parsed.success;
+  const { name, expiresInDays = defaultExpiryDays, grants = [] } = parsed.success;
   const ids = new Set(grants.map((grant) => grant.capability));
   if (ids.size !== grants.length) return Result.fail(new InvalidRequest());
   if (grants.some((grant) => findCapability(grant.capability) === undefined)) {
@@ -53,6 +56,10 @@ export type Connection = {
 } & Brand.Brand<"Connection">;
 
 const connection = Brand.nominal<Connection>();
+
+export class AuthenticatedConnection extends Context.Service<AuthenticatedConnection, Connection>()(
+  "os/core/AuthenticatedConnection",
+) {}
 
 const connectionFields = {
   id: Schema.String,

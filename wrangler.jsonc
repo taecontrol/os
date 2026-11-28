@@ -10,5 +10,6 @@
     "required": ["OWNER_EMAIL", "ACCESS_ISSUER", "ACCESS_AUDIENCE"],
   },
   "d1_databases": [{ "binding": "DB", "migrations_dir": "migrations" }],
-  "observability": { "enabled": true },
+  "kv_namespaces": [{ "binding": "OAUTH_KV" }],
+  "observability": { "enabled": true, "redact_query_string": true },
 }

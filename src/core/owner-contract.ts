@@ -9,6 +9,22 @@ const ById = Schema.Struct({ id: Schema.String });
 const ByGrant = Schema.Struct({ id: Schema.String, capability: Schema.String });
 export const GrantPayload = Schema.Struct({ mode: GrantMode });
 
+const ConsentRequest = Schema.Struct({
+  client: Schema.Struct({ name: Schema.String, domain: Schema.String }),
+  redirect: Schema.Struct({ host: Schema.String, loopback: Schema.Boolean }),
+  expiresInDays: Schema.Int,
+  expiresAt: Schema.Int,
+});
+
+export const ConsentDecision = Schema.Union([
+  Schema.Struct({
+    decision: Schema.Literal("allow"),
+    name: Schema.String,
+    grants: Schema.optionalKey(Grants),
+  }),
+  Schema.Struct({ decision: Schema.Literal("deny") }),
+]);
+
 const Capability = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
@@ -48,6 +64,7 @@ const AuditQuery = Schema.Struct({
 });
 
 const connectionError = refusalSchema("ConnectionNotFound");
+const consentError = refusalSchema("ConsentNotFound");
 const invalidRequest = refusalSchema("InvalidRequest");
 const grantErrors = [
   connectionError,
@@ -106,6 +123,17 @@ export const OwnerApiGroup = HttpApiGroup.make("owner")
       params: ById,
       success: AuditEntry,
       error: refusalSchema("AuditEntryNotFound"),
+    }),
+    HttpApiEndpoint.get("consent", "/api/consent/:id", {
+      params: ById,
+      success: ConsentRequest,
+      error: consentError,
+    }),
+    HttpApiEndpoint.post("decideConsent", "/api/consent/:id", {
+      params: ById,
+      payload: ConsentDecision,
+      success: Schema.Struct({ redirectUrl: Schema.String }),
+      error: [consentError, invalidRequest, refusalSchema("CapabilityNotFound")],
     }),
   )
   .middleware(OwnerApiAccess);

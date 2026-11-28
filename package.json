@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler d1 migrations apply DB --local && vp dev",
+    "dev": "wrangler d1 migrations apply DB --local && X_LOCAL_OBSERVABILITY=false vp dev",
     "build": "vp build",
     "check": "vp check && wrangler types --check",
     "test": "vp test run",
@@ -12,6 +12,7 @@
     "owner:reset:local": "wrangler d1 execute DB --local --command \"REPLACE INTO owner (id, generation, email) SELECT 1, generation + 1, NULL FROM owner WHERE id = 1\""
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.4.0",
     "effect": "4.1.7"
   },
   "devDependencies": {

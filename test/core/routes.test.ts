@@ -8,15 +8,17 @@ const notFound = { status: 404, body: { error: "not_found" } };
 const agentCredential = { status: 400, body: { error: "agent_credential_rejected" } };
 const accessAssertion = { status: 400, body: { error: "access_assertion_rejected" } };
 const unauthenticated = { status: 401, body: { error: "unauthenticated" } };
+const invalidToken = { status: 401, body: { error: "invalid_token" } };
+const invalidClient = { status: 401, body: { error: "invalid_client" } };
 
 const machinePaths = [
-  "/mcp",
-  "/mcp/x",
-  "/oauth/token",
-  "/oauth/token/x",
-  "/.well-known/oauth-protected-resource",
-  "/agent/x",
-];
+  ["/mcp", invalidToken],
+  ["/mcp/x", invalidToken],
+  ["/oauth/token", invalidClient],
+  ["/oauth/token/x", notFound],
+  ["/.well-known/oauth-protected-resource", notFound],
+  ["/agent/x", notFound],
+] as const;
 
 interface Row {
   readonly path: string;
@@ -44,11 +46,16 @@ const rows: ReadonlyArray<Row> = [
     headers: owner,
     expected: { status: 200, body: { email: "owner@example.com" } },
   },
-  ...machinePaths.flatMap((path): ReadonlyArray<Row> => [
+  ...machinePaths.flatMap(([path, anonymous]): ReadonlyArray<Row> => [
     { path, headers: { "cf-access-jwt-assertion": "" }, expected: accessAssertion, reads: 0 },
     { path, method: "POST", headers: owner, expected: accessAssertion, reads: 0 },
-    { path, headers: {}, expected: notFound, reads: 1 },
+    { path, headers: {}, expected: anonymous, reads: 1 },
   ]),
+  ...["/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource/mcp"].map(
+    (path): Row => ({ path, headers: owner, expected: accessAssertion, reads: 0 }),
+  ),
+  { path: "/authorize", headers: {}, expected: unauthenticated, reads: 0 },
+  { path: "/api/consent/x", method: "POST", headers: {}, expected: unauthenticated, reads: 0 },
   { path: "/.well-known", headers: owner, expected: notFound, reads: 0 },
   { path: "/agent", headers: owner, expected: notFound, reads: 0 },
   { path: "/mcpx", headers: owner, expected: notFound, reads: 0 },

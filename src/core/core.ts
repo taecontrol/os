@@ -1,9 +1,18 @@
 import { Context, Effect, Layer } from "effect";
 import { HttpRouter, HttpServerRequest, type HttpServerResponse } from "effect/http";
 import { HttpApiError } from "effect/http-api";
-import { Bindings } from "./bindings.ts";
+import { Bindings, Execution } from "./bindings.ts";
 import type { ConfigKey } from "./config.ts";
+import { AuthenticatedConnection } from "./connections.ts";
+import { authorize } from "./consent.ts";
 import type { OwnerIdentity } from "./identity.ts";
+import {
+  authenticateBearer,
+  authorizationServerMetadata,
+  protectedResourceMetadata,
+  protectedResourceMetadataPath,
+  tokenEndpoint,
+} from "./oauth.ts";
 import { ownerApiRoutes } from "./owner-api.ts";
 import { OwnerApiAccess } from "./owner-contract.ts";
 import { Owner, OwnerGeneration, pinOwner, readOwner, requireUnlocked } from "./owner.ts";
@@ -19,14 +28,7 @@ import {
   type Refusal,
 } from "./refusal.ts";
 
-const machinePaths = [
-  "/mcp",
-  "/mcp/*",
-  "/oauth/token",
-  "/oauth/token/*",
-  "/.well-known/*",
-  "/agent/*",
-] as const;
+const unservedMachinePaths = ["/oauth/token/*", "/.well-known/*", "/agent/*"] as const;
 
 const bareWildcardBases = ["/api", "/.well-known", "/agent"] as const;
 
@@ -41,8 +43,8 @@ const guarded =
       Effect.catch((refusal) => Effect.succeed(refuse(refusal))),
     );
 
-export const asMachine = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
-  const machineGate = Effect.gen(function* () {
+const machineGate = <K extends ConfigKey>(identity: OwnerIdentity<K>) =>
+  Effect.gen(function* () {
     const env = yield* Bindings;
     const request = yield* HttpServerRequest.HttpServerRequest;
     const config = yield* Effect.fromResult(identity.readConfig(env));
@@ -54,8 +56,16 @@ export const asMachine = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
     return row.generation;
   });
 
+export const asMachine = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
+  const gate = machineGate(identity);
   return <R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, Refusal, R>) =>
-    guarded(machineGate)(OwnerGeneration, handler);
+    guarded(gate)(OwnerGeneration, handler);
+};
+
+export const asConnection = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
+  const gate = machineGate(identity).pipe(Effect.andThen(authenticateBearer));
+  return <R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, Refusal, R>) =>
+    guarded(gate)(AuthenticatedConnection, handler);
 };
 
 export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
@@ -74,6 +84,7 @@ export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
   const asOwner = <R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, Refusal, R>) =>
     guarded(ownerGate)(Owner, handler);
   const asAgent = asMachine(identity);
+  const asAgentConnection = asConnection(identity);
   const ownerAccess = Layer.succeed(OwnerApiAccess)((httpEffect) =>
     asOwner(
       httpEffect.pipe(
@@ -105,8 +116,20 @@ export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
         }),
       ),
     ),
+    HttpRouter.route("GET", "/authorize", asOwner(authorize)),
     HttpRouter.route("*", "/api/*", asOwner(Effect.succeed(notFound))),
-    ...machinePaths.map((path) => HttpRouter.route("*", path, asAgent(Effect.succeed(notFound)))),
+    HttpRouter.route("*", "/mcp", asAgentConnection(Effect.succeed(notFound))),
+    HttpRouter.route("*", "/mcp/*", asAgentConnection(Effect.succeed(notFound))),
+    HttpRouter.route("*", "/oauth/token", asAgent(tokenEndpoint)),
+    HttpRouter.route(
+      "*",
+      "/.well-known/oauth-authorization-server",
+      asAgent(authorizationServerMetadata),
+    ),
+    HttpRouter.route("GET", protectedResourceMetadataPath, asAgent(protectedResourceMetadata)),
+    ...unservedMachinePaths.map((path) =>
+      HttpRouter.route("*", path, asAgent(Effect.succeed(notFound))),
+    ),
     ...bareWildcardBases.map((path) => HttpRouter.route("*", path, notFound)),
     HttpRouter.route("*", "/*", notFound),
   ]);
@@ -120,6 +143,6 @@ export const makeCore = <K extends ConfigKey>(identity: OwnerIdentity<K>) => {
     },
   });
 
-  return (request: Request, env: Env): Promise<Response> =>
-    handler(request, Context.make(Bindings, env));
+  return (request: Request, env: Env, execution: ExecutionContext): Promise<Response> =>
+    handler(request, Context.make(Bindings, env).pipe(Context.add(Execution, execution)));
 };
