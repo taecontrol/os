@@ -36,4 +36,4 @@
 
 **OAuth client allowlist**: the Client ID Metadata Document URLs of the MCP clients that may connect through OAuth: Claude Code, Codex, and Claude. Core refuses any other client before it fetches anything for it, and shows the owner the client's name and domain from the allowlist.
 
-**Consent request**: an allowlisted client's validated authorization request, waiting 10 minutes for the owner to allow it, with a connection name and grants, or deny it. Allowing it gives the client a code; the connection exists only once the client redeems that code.
+**Consent request**: an allowlisted client's validated authorization request, waiting 10 minutes for the owner to allow it, with a connection name and grants, or deny it. Allowing it gives the client a code. During a valid code exchange, OS creates the connection before the provider issues tokens.
