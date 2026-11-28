@@ -134,4 +134,4 @@ Until the reset, the new owner and machine requests get `503` with `{"error":"ow
 
 ## Run locally
 
-Put `OWNER_EMAIL=owner@example.com` in `.dev.vars`, run `vp run dev`, and open `/api/owner` at the address it prints. It shows that email. Locally, OS signs in every visitor as that email, without Cloudflare Access, so it listens only on localhost. To open it from another device, bind it to one address that device can reach, such as a Tailscale IP: `vp run dev --host <ip>`. OS signs in anyone who reaches that address as the owner. `vp run owner:reset:local` resets the local owner.
+Put `OWNER_EMAIL=owner@example.com` in `.dev.vars`, run `vp run dev`, and open `/api/owner` at the address it prints. It shows that email. Locally, OS signs in every visitor as that email, without Cloudflare Access, so it listens only on localhost. To open it from another device, bind it to one address that device can reach, such as a Tailscale IP: `vp run dev --host <ip>`. OS signs in anyone who reaches that address as the owner. Agents still sign in only through localhost, because OAuth needs HTTPS on any other address. `vp run owner:reset:local` resets the local owner.

@@ -14,7 +14,7 @@
 
 **Owner reset**: the operator command that clears the pinned owner, moves to the next owner generation, and in the same statement deletes every owner-bound row of the old generation.
 
-**Owner route**: a route under `/api/`. It acts only for the pinned owner, verified from the Cloudflare Access assertion, and refuses any agent credential.
+**Owner route**: a route under `/api/`, and `/authorize`. It acts only for the pinned owner, verified from the Cloudflare Access assertion, and refuses any agent credential.
 
 **Machine route**: a route that Cloudflare Access bypasses, under `/mcp`, `/oauth/token`, `/.well-known/`, or `/agent/`. Agents call it with their own credentials, and it refuses any Access assertion.
 
