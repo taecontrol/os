@@ -110,11 +110,10 @@ const serve = (request: Request) =>
   Effect.gen(function* () {
     const env = yield* Bindings;
     const execution = yield* Execution;
-    const response = yield* Effect.tryPromise({
+    return yield* Effect.tryPromise({
       try: () => authorizationServer(new URL(request.url).origin).fetch(request, env, execution),
       catch: () => new Unavailable(),
     });
-    return HttpServerResponse.fromWeb(response);
   });
 
 const screenTokenRequest = (request: Request) =>
@@ -139,10 +138,13 @@ const screenTokenRequest = (request: Request) =>
 export const tokenEndpoint = Effect.gen(function* () {
   const request = yield* webRequest;
   yield* screenTokenRequest(request);
-  return yield* serve(request);
+  return HttpServerResponse.fromWeb(yield* serve(request));
 });
 
-export const authorizationServerMetadata = webRequest.pipe(Effect.flatMap(serve));
+export const authorizationServerMetadata = webRequest.pipe(
+  Effect.flatMap(serve),
+  Effect.map(HttpServerResponse.fromWeb),
+);
 
 export const protectedResourceMetadata = webRequest.pipe(
   Effect.map((request) => {
