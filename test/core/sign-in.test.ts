@@ -147,6 +147,38 @@ it("completes an approval sent through another address with the issuer where sig
   ]);
 });
 
+const withOneKvWritePerKeyPerSecond = (installation: Installation): Installation => {
+  const writtenAt = new Map<string, number>();
+  const put: KVNamespace["put"] = async (key, ...rest) => {
+    const now = Date.now();
+    if (now - (writtenAt.get(key) ?? -Infinity) < 1000) {
+      throw new Error("KV PUT failed: 429 Too Many Requests");
+    }
+    writtenAt.set(key, now);
+    return env.OAUTH_KV.put(key, ...rest);
+  };
+  const store = new Proxy(env.OAUTH_KV, {
+    get: (target, property) => {
+      if (property === "put") return put;
+      const value = Reflect.get(target, property);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return {
+    ...installation,
+    request: (path, options) =>
+      installation.request(path, { ...options, env: { ...options?.env, OAUTH_KV: store } }),
+  };
+};
+
+it("issues tokens to a client that redeems its code the moment Allow answers, under KV's one write per key per second", async () => {
+  const installation = withOneKvWritePerKeyPerSecond(await install([accessKey]));
+  const consent = await startSignIn(installation);
+  const code = (await approve(installation, consent)).get("code");
+
+  await issuedTokens(await redeem(installation, consent, code));
+});
+
 it("tells a client that follows discovery from /mcp to authenticate as a public client", async () => {
   const installation = await install([accessKey]);
   const read = async (url: URL) =>
