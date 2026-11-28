@@ -23,6 +23,9 @@ cd os
 In Zero Trust, [create two self-hosted applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/). Leave [Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) turned off in both.
 
 1. **OS**: the whole hostname `os.example.com`, with one Allow policy that includes only your email. Copy its [Application Audience (AUD) tag](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/#get-your-aud-tag) for step 3.
+
+   In the Cloudflare dashboard, go to **Zero Trust → Access controls → Applications** and edit **OS**. Under **Advanced settings → Cookie settings**, set **SameSite Attribute** to **Lax** or **Strict** and save. This keeps browsers from sending the `CF_Authorization` session cookie with cross-site `POST`, `PUT`, or `DELETE` requests. [Cloudflare Access cookie settings](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/#cookie-settings)
+
 2. **OS machine routes**: the same hostname with these four destinations, and one Bypass policy that includes everyone:
    - `os.example.com/mcp`
    - `os.example.com/oauth/token`
