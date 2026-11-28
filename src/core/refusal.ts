@@ -49,7 +49,9 @@ export const refusalSchema = <Tag extends Exclude<Refusal["_tag"], "SetupIncompl
   tag: Tag,
 ) => {
   const [status, error] = refusals[tag];
-  return Schema.Struct({ error: Schema.Literal(error) }).pipe(HttpApiSchema.status(status));
+  return Schema.Struct({ error: Schema.Literal<(typeof refusals)[Tag][1]>(error) }).pipe(
+    HttpApiSchema.status(status),
+  );
 };
 
 export const SetupIncompleteResponse = Schema.Struct({
