@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler d1 migrations apply DB --local && vp dev",
+    "dev": "wrangler d1 migrations apply DB --local && X_LOCAL_OBSERVABILITY=false vp dev",
     "build": "vp build",
     "check": "vp check && wrangler types --check",
     "test": "vp test run",
