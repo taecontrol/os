@@ -111,7 +111,9 @@ vp exec wrangler d1 migrations apply DB --remote < /dev/null
 vp exec wrangler d1 migrations list DB --remote < /dev/null
 ```
 
-When Wrangler reports no migrations left to apply, deploy the Worker.
+Before you deploy, check **SameSite Attribute** for the **OS** Access application using [the cookie instructions in step 1](#1-create-two-cloudflare-access-applications). Set it to **Lax** or **Strict** and save if needed.
+
+Deploy the Worker once the cookie setting is correct and Wrangler reports no migrations left to apply.
 
 ```sh
 vp exec wrangler deploy < /dev/null
