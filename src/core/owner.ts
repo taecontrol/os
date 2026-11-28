@@ -1,8 +1,9 @@
 import { Context, Effect, Option, Schema } from "effect";
 import { normalizeEmail, type OwnerEmail } from "./config.ts";
+import { decodeStored, query } from "./d1.ts";
 import { OwnerLocked, Unavailable } from "./refusal.ts";
 
-const Generation = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(
+export const Generation = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(
   Schema.brand("OwnerGeneration"),
 );
 export type Generation = typeof Generation.Type;
@@ -16,27 +17,21 @@ export class OwnerGeneration extends Context.Service<OwnerGeneration, Generation
   "os/core/OwnerGeneration",
 ) {}
 
-const StoredOwner = Schema.Struct({
-  generation: Generation,
-  email: Schema.NullOr(Schema.String),
-});
+const decodeStoredOwner = decodeStored(
+  Schema.Struct({ generation: Generation, email: Schema.NullOr(Schema.String) }),
+);
 
 interface OwnerRow {
   readonly generation: Generation;
   readonly pinned: Option.Option<OwnerEmail>;
 }
 
-const query = <A>(run: () => Promise<A>) =>
-  Effect.tryPromise({ try: run, catch: () => new Unavailable() });
-
-const decodeStoredOwner = Schema.decodeUnknownEffect(StoredOwner);
-
 export const readOwner = (db: D1Database) =>
   Effect.gen(function* () {
     const raw = yield* query(() =>
       db.prepare("SELECT generation, email FROM owner WHERE id = 1").first(),
     );
-    const row = yield* decodeStoredOwner(raw).pipe(Effect.mapError(() => new Unavailable()));
+    const row = yield* decodeStoredOwner(raw);
     if (row.email === null) return { generation: row.generation, pinned: Option.none() };
     const pinned = normalizeEmail(row.email);
     if (Option.isNone(pinned) || pinned.value !== row.email) return yield* new Unavailable();

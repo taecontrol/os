@@ -1,6 +1,6 @@
 # OS
 
-OS is a Cloudflare Worker that one person, the owner, installs in their own Cloudflare account. Its goal is to give the owner's AI agents tools to act on what the owner cares about, such as memory, secrets, and Google accounts, and to show the owner what those agents did. Today OS has only owner sign-in through Cloudflare Access. Agents cannot connect to it yet.
+OS is a Cloudflare Worker that one person, the owner, installs in their own Cloudflare account. Its goal is to give the owner's AI agents tools to act on what the owner cares about, such as memory, secrets, and Google accounts, and to show the owner what those agents did. The owner signs in through Cloudflare Access and can manage agent connections and grants through the Core HTTP API.
 
 ## Install
 
@@ -23,6 +23,9 @@ cd os
 In Zero Trust, [create two self-hosted applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/). Leave [Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) turned off in both.
 
 1. **OS**: the whole hostname `os.example.com`, with one Allow policy that includes only your email. Copy its [Application Audience (AUD) tag](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/#get-your-aud-tag) for step 3.
+
+   In the Cloudflare dashboard, go to **Zero Trust → Access controls → Applications** and edit **OS**. Under **Advanced settings → Cookie settings**, set **SameSite Attribute** to **Lax** or **Strict** and save. This keeps browsers from sending the `CF_Authorization` session cookie with cross-site `POST`, `PUT`, or `DELETE` requests. [Cloudflare Access cookie settings](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/#cookie-settings)
+
 2. **OS machine routes**: the same hostname with these four destinations, and one Bypass policy that includes everyone:
    - `os.example.com/mcp`
    - `os.example.com/oauth/token`
@@ -77,16 +80,16 @@ vp exec wrangler d1 migrations list DB --remote < /dev/null
 rm secrets.json
 ```
 
-`wrangler d1 migrations list` must report no migrations left to apply. Later deploys need only `vp build` and `vp exec wrangler deploy < /dev/null`.
+`wrangler d1 migrations list` must report no migrations left to apply.
 
 ### 4. Check the installation
 
 Without a session, run `curl -i https://os.example.com<path>` for each path below.
 
-| Path                                                                             | Expected answer                                                                    |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `404` with `{"error":"not_found"}`, from the Worker rather than an Access redirect |
-| `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain                                              |
+| Path                                                                             | Expected answer                                    |
+| -------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `404` with `{"error":"not_found"}` from the Worker |
+| `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain              |
 
 If an answer differs:
 
@@ -94,9 +97,29 @@ If an answer differs:
 - `503` with `{"error":"setup_incomplete"}` means a secret is missing or invalid. The `missing` field names it.
 - `503` with `{"error":"unavailable"}` usually means the migrations have not run.
 
-Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `404` with `{"error":"not_found"}`, because Cloudflare removes this header when a client sends it.
+Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `404` with `{"error":"not_found"}` because Cloudflare removes this header when a client sends it.
 
 Last, open `https://os.example.com/api/owner` in a browser and sign in. It shows your email. This first sign-in records you as the owner.
+
+## Update OS
+
+From the updated checkout, build OS and apply pending migrations to the existing D1 database.
+
+```sh
+vp build
+vp exec wrangler d1 migrations apply DB --remote < /dev/null
+vp exec wrangler d1 migrations list DB --remote < /dev/null
+```
+
+Before you deploy, check **SameSite Attribute** for the **OS** Access application using [the cookie instructions in step 1](#1-create-two-cloudflare-access-applications). Set it to **Lax** or **Strict** and save if needed.
+
+If the setting was **None**, edit **OS** again after saving and select **Revoke existing tokens** to end all active OS sessions, including any whose `CF_Authorization` cookie still has `SameSite=None`. [Cloudflare Access session revocation](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/#per-application)
+
+Deploy the Worker once you finish the Access steps and Wrangler reports no migrations left to apply.
+
+```sh
+vp exec wrangler deploy < /dev/null
+```
 
 ## Change the owner
 
@@ -104,7 +127,7 @@ Last, open `https://os.example.com/api/owner` in a browser and sign in. It shows
 2. Create a secrets file as in step 3 that holds only `{"OWNER_EMAIL": "<new email>"}`. Run `vp exec wrangler deploy --secrets-file secrets.json < /dev/null`, then delete the file. This deploy sends the new version to all traffic. Do not roll it out gradually, because an older version that still serves requests accepts the old owner.
 3. Run `vp run owner:reset`.
 
-Until the reset, the new owner and every request to the machine paths get `503` with `{"error":"owner_locked"}`, and a session the previous owner still holds gets `403` with `{"error":"not_owner"}`. To go back without a reset, restore both the Allow policy and the old `OWNER_EMAIL`. The reset clears the recorded owner, and the new owner's first sign-in records them. The reset also deletes data that later versions tie to an owner; today there is none.
+Until the reset, the new owner and machine requests get `503` with `{"error":"owner_locked"}`. A session the previous owner still holds gets `403` with `{"error":"not_owner"}`. To go back without a reset, restore both the Allow policy and the old `OWNER_EMAIL`. The reset clears the recorded owner and deletes their connections, grants, and audit entries. The new owner's first sign-in records them.
 
 ## Run locally
 
