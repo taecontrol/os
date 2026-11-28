@@ -54,9 +54,13 @@ export const authorize = Effect.gen(function* () {
   const id = Hex.encode(crypto.getRandomValues(new Uint8Array(16)));
   const expiresAt = (yield* Clock.currentTimeMillis) + consentSeconds * 1000;
   yield* kv((store) =>
-    store.put(consentKey(id), JSON.stringify({ authRequest, expiresAt }), {
-      expirationTtl: consentSeconds,
-    }),
+    store.put(
+      consentKey(id),
+      JSON.stringify({ authRequest, expiresAt } satisfies typeof StoredConsent.Encoded),
+      {
+        expirationTtl: consentSeconds,
+      },
+    ),
   ).pipe(Effect.mapError((): RefusalReason => "unavailable"));
   return redirect(`/consent/${id}`);
 }).pipe(Effect.catch((reason) => Effect.succeed(redirect(`/consent/refused?reason=${reason}`))));
