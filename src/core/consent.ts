@@ -4,7 +4,7 @@ import { Hex } from "effect/encoding";
 import { HttpServerResponse } from "effect/http";
 import { Bindings } from "./bindings.ts";
 import { defaultExpiryDays, parseConnectionRequest } from "./connections.ts";
-import { decodeStored } from "./d1.ts";
+import { decodeStored, query } from "./d1.ts";
 import { allowedClient, oauthHelpers, pendingGrant, webRequest } from "./oauth.ts";
 import type { ConsentDecision } from "./owner-contract.ts";
 import { Owner } from "./owner.ts";
@@ -32,11 +32,7 @@ const decodeConsent = decodeStored(StoredConsent);
 const consentKey = (id: string) => `consent:${id}`;
 
 const kv = <A>(run: (store: KVNamespace) => Promise<A>) =>
-  Bindings.pipe(
-    Effect.flatMap(({ OAUTH_KV }) =>
-      Effect.tryPromise({ try: () => run(OAUTH_KV), catch: () => new Unavailable() }),
-    ),
-  );
+  Bindings.pipe(Effect.flatMap(({ OAUTH_KV }) => query(() => run(OAUTH_KV))));
 
 type RefusalReason = "client_not_allowed" | "invalid_request" | "unavailable";
 

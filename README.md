@@ -71,7 +71,7 @@ Write the three secrets into it:
 - `ACCESS_ISSUER` is your Zero Trust team domain. Your team name is in Zero Trust under Settings.
 - `ACCESS_AUDIENCE` is the AUD tag from step 1.
 
-The first deploy creates the D1 database. `DB` is the name `wrangler.jsonc` gives it, so type it as shown.
+The first deploy creates the D1 database and the KV namespace that holds OAuth grants. `DB` is the name `wrangler.jsonc` gives the database, so type it as shown.
 
 ```sh
 vp exec wrangler deploy --domain os.example.com --secrets-file secrets.json < /dev/null
@@ -86,18 +86,21 @@ rm secrets.json
 
 Without a session, run `curl -i https://os.example.com<path>` for each path below.
 
-| Path                                                                             | Expected answer                                    |
-| -------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `/mcp`, `/mcp/x`, `/oauth/token`, `/oauth/token/x`, `/.well-known/x`, `/agent/x` | `404` with `{"error":"not_found"}` from the Worker |
-| `/.well-known`, `/agent`, `/api/owner`                                           | A redirect to your Access team domain              |
+| Path                                                 | Expected answer                                                        |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| `/mcp`, `/mcp/x`                                     | `401` with `{"error":"invalid_token"}` and a `WWW-Authenticate` header |
+| `/oauth/token`                                       | `401` with `{"error":"invalid_client"}`                                |
+| `/.well-known/oauth-protected-resource/mcp`          | `200` with `{"resource":"https://os.example.com/mcp", …}`              |
+| `/oauth/token/x`, `/.well-known/x`, `/agent/x`       | `404` with `{"error":"not_found"}` from the Worker                     |
+| `/authorize`, `/.well-known`, `/agent`, `/api/owner` | A redirect to your Access team domain                                  |
 
 If an answer differs:
 
-- A redirect where the table expects `404` means the destinations of the OS machine routes application are wrong.
+- A redirect where the table expects an answer from the Worker means the destinations of the OS machine routes application are wrong.
 - `503` with `{"error":"setup_incomplete"}` means a secret is missing or invalid. The `missing` field names it.
 - `503` with `{"error":"unavailable"}` usually means the migrations have not run.
 
-Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `404` with `{"error":"not_found"}` because Cloudflare removes this header when a client sends it.
+Then run `curl -i -H 'Cf-Access-Jwt-Assertion: x' https://os.example.com/mcp`. It must also answer `401` with `{"error":"invalid_token"}` because Cloudflare removes this header when a client sends it.
 
 Last, open `https://os.example.com/api/owner` in a browser and sign in. It shows your email. This first sign-in records you as the owner.
 

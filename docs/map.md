@@ -11,7 +11,8 @@ The `os-core` Worker owns owner sign-in, agent connections, capability grants, a
 - Owner state: `src/core/owner.ts`, `migrations/`, and the `owner:reset` scripts in `package.json`. New owner-bound tables follow ADR-0004.
 - Connections and grants: `src/core/connections.ts` accepts a consent request, creates the connection at redemption, and checks whether a connection is live. `src/core/owner-api.ts` serves the owner HTTP API. `src/core/capabilities.ts` declares what agents can be granted.
 - Agent calls and audit: `src/core/gate.ts` records the grant decision before running an action. `src/core/audit.ts` reads the audit log for the owner.
-- Configuration: `wrangler.jsonc` declares the Worker, its D1 binding, and the required secrets; `src/core/config.ts` validates the secrets.
+- MCP clients over OAuth: `src/core/oauth.ts` runs the authorization server from `@cloudflare/workers-oauth-provider` for the OAuth client allowlist, screens `/oauth/token`, creates the connection when a client redeems its code, and checks every `/mcp` bearer token against a live connection. `src/core/consent.ts` turns `/authorize` into a consent request and serves the owner's consent API. Consent requests and OAuth grants live in the `OAUTH_KV` namespace.
+- Configuration: `wrangler.jsonc` declares the Worker, its D1 and KV bindings, and the required secrets; `src/core/config.ts` validates the secrets.
 - Tests: `test/core/` runs in workerd; `test/*.test.ts` runs in Node (production build, owner reset, dev server, no-comments rule).
 
 ## Tooling
