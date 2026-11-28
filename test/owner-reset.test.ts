@@ -4,12 +4,17 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { checkoutCopy, withoutVitest } from "./checkout-copy.ts";
 
+const connectionId = "00000000-0000-4000-8000-000000000001";
+const insertConnection = (generation: number) =>
+  `INSERT INTO connections (id, owner_generation, name, created_at, expires_at)
+    VALUES ('${connectionId}', ${generation}, 'Laptop', 1800000000000, 1800604800000)`;
+
 const seed = [
   "UPDATE owner SET email = 'owner@example.com' WHERE id = 1",
-  "CREATE TABLE test_root (id INTEGER PRIMARY KEY, owner_generation INTEGER NOT NULL REFERENCES owner (generation) ON DELETE CASCADE) STRICT",
-  "CREATE TABLE test_child (id INTEGER PRIMARY KEY, root_id INTEGER NOT NULL REFERENCES test_root (id) ON DELETE CASCADE) STRICT",
-  "INSERT INTO test_root (id, owner_generation) VALUES (1, 1)",
-  "INSERT INTO test_child (root_id) VALUES (1)",
+  insertConnection(1),
+  `INSERT INTO grants (connection_id, capability, mode) VALUES ('${connectionId}', 'notifications.send', 'allow')`,
+  `INSERT INTO audit_entries (id, owner_generation, connection_id, capability, outcome, occurred_at, finished_at)
+    VALUES ('00000000-0000-4000-8000-000000000002', 1, '${connectionId}', 'notifications.send', 'succeeded', 1800000000001, 1800000000002)`,
 ].join("; ");
 
 describe("vp run owner:reset:local", () => {
@@ -35,14 +40,17 @@ describe("vp run owner:reset:local", () => {
       succeeded(run("vp", "run", "owner:reset:local"));
 
       const state = execute(
-        "SELECT generation, email, (SELECT count(*) FROM test_root) AS roots, (SELECT count(*) FROM test_child) AS children FROM owner",
+        `SELECT generation, email,
+          (SELECT count(*) FROM connections) AS connections,
+          (SELECT count(*) FROM grants) AS grants,
+          (SELECT count(*) FROM audit_entries) AS audit_entries FROM owner`,
       );
       succeeded(state);
       expect((JSON.parse(state.stdout) as Array<{ results: unknown }>)[0]?.results).toEqual([
-        { generation: 2, email: null, roots: 0, children: 0 },
+        { generation: 2, email: null, connections: 0, grants: 0, audit_entries: 0 },
       ]);
-      violatesForeignKey(execute("INSERT INTO test_root (owner_generation) VALUES (1)"));
-      succeeded(execute("INSERT INTO test_root (owner_generation) VALUES (2)"));
+      violatesForeignKey(execute(insertConnection(1)));
+      succeeded(execute(insertConnection(2)));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
