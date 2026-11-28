@@ -127,10 +127,10 @@ const screenTokenRequest = (request: Request) =>
       return yield* new InvalidClient();
     }
     const body = yield* Effect.tryPromise({
-      try: () => request.clone().text(),
+      try: () => request.clone().arrayBuffer(),
       catch: () => new InvalidClient(),
     });
-    const form = new URLSearchParams(body);
+    const form = new URLSearchParams(new TextDecoder().decode(body));
     if (form.has("client_assertion") || allowedClient(form.getAll("client_id")) === undefined) {
       return yield* new InvalidClient();
     }
