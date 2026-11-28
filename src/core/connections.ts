@@ -13,7 +13,7 @@ import {
 } from "./refusal.ts";
 import { truncateCharacters } from "./text.ts";
 
-const ExpiryDays = Schema.Literals([7, 30, 90, 365]);
+const ExpiryDays = Schema.Literals([7, 30, 90]);
 
 const decodeRequest = Schema.decodeUnknownResult(
   Schema.Struct({
